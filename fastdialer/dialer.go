@@ -7,13 +7,13 @@ import (
 	"strings"
 	"time"
 
-	"github.com/projectdiscovery/fastdialer/dnsclient"
 	"github.com/projectdiscovery/hmap/store/hybrid"
+	retryabledns "github.com/projectdiscovery/retryabledns"
 )
 
 // Dialer structure containing data information
 type Dialer struct {
-	dnsclient     *dnsclient.Client
+	dnsclient     *retryabledns.Client
 	hm            *hybrid.HybridMap
 	dialerHistory *hybrid.HybridMap
 	dialer        *net.Dialer
@@ -21,10 +21,7 @@ type Dialer struct {
 
 // NewDialer instance
 func NewDialer(options Options) (*Dialer, error) {
-	dnsclient, err := dnsclient.New(options.BaseResolvers, options.MaxRetries)
-	if err != nil {
-		return nil, err
-	}
+	dnsclient := retryabledns.New(options.BaseResolvers, options.MaxRetries)
 	hm, err := hybrid.New(hybrid.DefaultDiskOptions)
 	if err != nil {
 		return nil, err
@@ -55,12 +52,12 @@ func (d *Dialer) Dial(ctx context.Context, network, address string) (conn net.Co
 		data, err = d.dnsclient.Resolve(hostname)
 	}
 
-	if err != nil || len(data.IP4s)+len(data.IP6s) == 0 {
+	if err != nil || len(data.A)+len(data.AAAA) == 0 {
 		return nil, &NoAddressFoundError{}
 	}
 
 	// Dial to the IPs finally.
-	for _, ip := range append(data.IP4s, data.IP6s...) {
+	for _, ip := range append(data.A, data.AAAA...) {
 		conn, err = d.dialer.DialContext(ctx, network, ip+address[separator:])
 		if err == nil {
 			setErr := d.dialerHistory.Set(hostname, []byte(ip))
@@ -90,8 +87,8 @@ func (d *Dialer) GetDialedIP(hostname string) string {
 }
 
 // GetDNSDataFromCache cached by the resolver
-func (d *Dialer) GetDNSDataFromCache(hostname string) (*dnsclient.DNSData, error) {
-	var data dnsclient.DNSData
+func (d *Dialer) GetDNSDataFromCache(hostname string) (*retryabledns.DNSData, error) {
+	var data retryabledns.DNSData
 	dataBytes, ok := d.hm.Get(hostname)
 	if !ok {
 		return nil, fmt.Errorf("No data found")
@@ -102,17 +99,17 @@ func (d *Dialer) GetDNSDataFromCache(hostname string) (*dnsclient.DNSData, error
 }
 
 // GetDNSData for the given hostname
-func (d *Dialer) GetDNSData(hostname string) (*dnsclient.DNSData, error) {
+func (d *Dialer) GetDNSData(hostname string) (*retryabledns.DNSData, error) {
 	if ip := net.ParseIP(hostname); ip != nil {
 		if ip.To4() != nil {
-			return &dnsclient.DNSData{IP4s: []string{hostname}}, nil
+			return &retryabledns.DNSData{A: []string{hostname}}, nil
 		}
 		if ip.To16() != nil {
-			return &dnsclient.DNSData{IP6s: []string{hostname}}, nil
+			return &retryabledns.DNSData{AAAA: []string{hostname}}, nil
 		}
 	}
 	var (
-		data *dnsclient.DNSData
+		data *retryabledns.DNSData
 		err  error
 	)
 	data, err = d.GetDNSDataFromCache(hostname)
