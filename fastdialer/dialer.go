@@ -37,6 +37,11 @@ func NewDialer(options Options) (*Dialer, error) {
 		DualStack: true,
 	}
 
+	// load hardcoded values from host file
+	if options.HostsFile {
+		loadHostsFile(hm)
+	}
+
 	return &Dialer{dnsclient: dnsclient, hm: hm, dialerHistory: dialerHistory, dialer: dialer}, nil
 }
 
