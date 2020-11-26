@@ -39,6 +39,7 @@ func NewDialer(options Options) (*Dialer, error) {
 
 	// load hardcoded values from host file
 	if options.HostsFile {
+		// nolint:errcheck // if they cannot be loaded it's not a hard failure
 		loadHostsFile(hm)
 	}
 

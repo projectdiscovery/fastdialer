@@ -34,6 +34,7 @@ func loadHostsFile(hm *hybrid.HybridMap) error {
 		for _, host := range hosts {
 			dnsdata := retryabledns.DNSData{Host: host, A: []string{ip}}
 			dnsdataBytes, _ := dnsdata.Marshal()
+			// nolint:errcheck // if they cannot be cached it's not a hard failure
 			hm.Set(host, dnsdataBytes)
 		}
 	}
