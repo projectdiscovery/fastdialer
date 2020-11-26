@@ -11,10 +11,12 @@ var DefaultResolvers = []string{
 type Options struct {
 	BaseResolvers []string
 	MaxRetries    int
+	HostsFile     bool
 }
 
 // DefaultOptions of the cache
 var DefaultOptions = Options{
 	BaseResolvers: DefaultResolvers,
 	MaxRetries:    5,
+	HostsFile:     true,
 }
