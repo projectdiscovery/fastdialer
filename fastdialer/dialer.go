@@ -2,6 +2,7 @@ package fastdialer
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net"
 	"strings"
@@ -124,14 +125,15 @@ func (d *Dialer) GetDNSData(hostname string) (*retryabledns.DNSData, error) {
 		if err != nil {
 			return nil, err
 		}
+		if data == nil {
+			return nil, errors.New("could not resolve host")
+		}
 		b, _ := data.Marshal()
 		err = d.hm.Set(hostname, b)
 		if err != nil {
 			return nil, err
 		}
-
 		return data, nil
 	}
-
 	return data, nil
 }
