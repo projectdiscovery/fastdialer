@@ -58,6 +58,9 @@ func (d *Dialer) Dial(ctx context.Context, network, address string) (conn net.Co
 		// otherwise attempt to retrieve it
 		data, err = d.dnsclient.Resolve(hostname)
 	}
+	if data == nil {
+		return nil, errors.New("could not resolve host")
+	}
 
 	if err != nil || len(data.A)+len(data.AAAA) == 0 {
 		return nil, &NoAddressFoundError{}
