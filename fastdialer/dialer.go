@@ -2,6 +2,7 @@ package fastdialer
 
 import (
 	"context"
+	"crypto/tls"
 	"errors"
 	"fmt"
 	"net"
@@ -69,6 +70,39 @@ func (d *Dialer) Dial(ctx context.Context, network, address string) (conn net.Co
 	// Dial to the IPs finally.
 	for _, ip := range append(data.A, data.AAAA...) {
 		conn, err = d.dialer.DialContext(ctx, network, ip+address[separator:])
+		if err == nil {
+			setErr := d.dialerHistory.Set(hostname, []byte(ip))
+			if setErr != nil {
+				return nil, err
+			}
+			break
+		}
+	}
+	return
+}
+
+// DialTLS with encrypted connection
+func (d *Dialer) DialTLS(ctx context.Context, network, address string) (conn net.Conn, err error) {
+	separator := strings.LastIndex(address, ":")
+
+	// check if data is in cache
+	hostname := address[:separator]
+	data, err := d.GetDNSData(hostname)
+	if err != nil {
+		// otherwise attempt to retrieve it
+		data, err = d.dnsclient.Resolve(hostname)
+	}
+	if data == nil {
+		return nil, errors.New("could not resolve host")
+	}
+
+	if err != nil || len(data.A)+len(data.AAAA) == 0 {
+		return nil, &NoAddressFoundError{}
+	}
+
+	// Dial to the IPs finally.
+	for _, ip := range append(data.A, data.AAAA...) {
+		conn, err = tls.DialWithDialer(d.dialer, network, ip+address[separator:], &tls.Config{InsecureSkipVerify: true})
 		if err == nil {
 			setErr := d.dialerHistory.Set(hostname, []byte(ip))
 			if setErr != nil {
