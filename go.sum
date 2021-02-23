@@ -27,6 +27,8 @@ github.com/projectdiscovery/hmap v0.0.1 h1:VAONbJw5jP+syI5smhsfkrq9XPGn4aiYy5pR6
 github.com/projectdiscovery/hmap v0.0.1/go.mod h1:VDEfgzkKQdq7iGTKz8Ooul0NuYHQ8qiDs6r8bPD1Sb0=
 github.com/projectdiscovery/retryabledns v1.0.6 h1:fz33puVeUKJJ5s2POSlxO4WA4iodW6Yzm/EVNuO/93w=
 github.com/projectdiscovery/retryabledns v1.0.6/go.mod h1:/UzJn4I+cPdQl6pKiiQfvVAT636YZvJQYZhYhGB0dUQ=
+github.com/projectdiscovery/retryabledns v1.0.7-0.20210223220509-b2042117f565 h1:SrHEyTVof7F0KvZ/WNPggGWJQbVs1QM/aO6yG3TfPKo=
+github.com/projectdiscovery/retryabledns v1.0.7-0.20210223220509-b2042117f565/go.mod h1:/UzJn4I+cPdQl6pKiiQfvVAT636YZvJQYZhYhGB0dUQ=
 github.com/stretchr/objx v0.1.0/go.mod h1:HFkY916IF+rwdDfMAkV7OtwuqBVzrE8GR6GFx+wExME=
 github.com/stretchr/testify v1.7.0 h1:nwc3DEeHmmLAfoZucVR881uASk0Mfjw8xYJ99tb5CcY=
 github.com/stretchr/testify v1.7.0/go.mod h1:6Fq8oRcR53rry900zMqJjRRixrwX3KX962/h/Wwjteg=

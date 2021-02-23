@@ -15,6 +15,7 @@ import (
 
 // Dialer structure containing data information
 type Dialer struct {
+	options       *Options
 	dnsclient     *retryabledns.Client
 	hm            *hybrid.HybridMap
 	dialerHistory *hybrid.HybridMap
@@ -45,7 +46,7 @@ func NewDialer(options Options) (*Dialer, error) {
 		loadHostsFile(hm)
 	}
 
-	return &Dialer{dnsclient: dnsclient, hm: hm, dialerHistory: dialerHistory, dialer: dialer}, nil
+	return &Dialer{dnsclient: dnsclient, hm: hm, dialerHistory: dialerHistory, dialer: dialer, options: &options}, nil
 }
 
 // Dial function compatible with net/http
@@ -141,6 +142,9 @@ func (d *Dialer) GetDNSData(hostname string) (*retryabledns.DNSData, error) {
 	data, err = d.GetDNSDataFromCache(hostname)
 	if err != nil {
 		data, err = d.dnsclient.Resolve(hostname)
+		if d.options.EnableFallback {
+			data, err = d.dnsclient.ResolveWithSyscall(hostname)
+		}
 		if err != nil {
 			return nil, err
 		}
