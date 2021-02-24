@@ -9,9 +9,10 @@ var DefaultResolvers = []string{
 }
 
 type Options struct {
-	BaseResolvers []string
-	MaxRetries    int
-	HostsFile     bool
+	BaseResolvers  []string
+	MaxRetries     int
+	HostsFile      bool
+	EnableFallback bool
 }
 
 // DefaultOptions of the cache
