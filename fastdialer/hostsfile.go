@@ -25,18 +25,32 @@ func loadHostsFile(hm *hybrid.HybridMap) error {
 	}
 	defer file.Close()
 
+	dnsDatas := make(map[string]retryabledns.DNSData)
 	scanner := bufio.NewScanner(utfbom.SkipOnly(file))
 	for scanner.Scan() {
 		ip, hosts := HandleLine(scanner.Text())
 		if ip == "" || len(hosts) == 0 {
 			continue
 		}
+		netIP := net.ParseIP(ip)
+		isiPv4 := netIP.To4() != nil
+		isIPv6 := netIP.To16() != nil
 		for _, host := range hosts {
-			dnsdata := retryabledns.DNSData{Host: host, A: []string{ip}}
-			dnsdataBytes, _ := dnsdata.Marshal()
-			// nolint:errcheck // if they cannot be cached it's not a hard failure
-			hm.Set(host, dnsdataBytes)
+			dnsdata, ok := dnsDatas[host]
+			if !ok {
+				dnsdata = retryabledns.DNSData{Host: host}
+			}
+			if isiPv4 {
+				dnsdata.A = append(dnsdata.A, ip)
+			} else if isIPv6 {
+				dnsdata.A = append(dnsdata.AAAA, ip)
+			}
 		}
+	}
+
+	for host, dnsdata := range dnsDatas {
+		dnsdataBytes, _ := dnsdata.Marshal()
+		_ = hm.Set(host, dnsdataBytes)
 	}
 
 	return nil
