@@ -33,26 +33,26 @@ func loadHostsFile(hm *hybrid.HybridMap) error {
 			continue
 		}
 		netIP := net.ParseIP(ip)
-		isiPv4 := netIP.To4() != nil
+		isIPv4 := netIP.To4() != nil
 		isIPv6 := netIP.To16() != nil
+
 		for _, host := range hosts {
 			dnsdata, ok := dnsDatas[host]
 			if !ok {
 				dnsdata = retryabledns.DNSData{Host: host}
 			}
-			if isiPv4 {
+			if isIPv4 {
 				dnsdata.A = append(dnsdata.A, ip)
 			} else if isIPv6 {
 				dnsdata.AAAA = append(dnsdata.AAAA, ip)
 			}
+			dnsDatas[host] = dnsdata
 		}
 	}
-
 	for host, dnsdata := range dnsDatas {
 		dnsdataBytes, _ := dnsdata.Marshal()
 		_ = hm.Set(host, dnsdataBytes)
 	}
-
 	return nil
 }
 
@@ -83,7 +83,6 @@ func HandleLine(raw string) (ip string, hosts []string) {
 	}
 
 	hosts = fields[1:]
-
 	return
 }
 
