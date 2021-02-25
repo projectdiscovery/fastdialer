@@ -43,7 +43,7 @@ func loadHostsFile(hm *hybrid.HybridMap) error {
 			if isiPv4 {
 				dnsdata.A = append(dnsdata.A, ip)
 			} else if isIPv6 {
-				dnsdata.A = append(dnsdata.AAAA, ip)
+				dnsdata.AAAA = append(dnsdata.AAAA, ip)
 			}
 		}
 	}
