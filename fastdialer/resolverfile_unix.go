@@ -3,4 +3,4 @@
 package fastdialer
 
 // ResolverFilePath in unix file os
-const HostsFilePath = "/etc/resolv.conf"
+const ResolverFilePath = "/etc/resolv.conf"
