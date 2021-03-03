@@ -24,7 +24,15 @@ type Dialer struct {
 
 // NewDialer instance
 func NewDialer(options Options) (*Dialer, error) {
-	dnsclient := retryabledns.New(options.BaseResolvers, options.MaxRetries)
+	var resolvers []string
+	// Add system resolvers as the first to be tried
+	if options.ResolversFile {
+		systemResolvers, err := loadResolverFile()
+		if err == nil && len(systemResolvers) > 0 {
+			resolvers = systemResolvers
+		}
+	}
+	resolvers = append(resolvers, options.BaseResolvers...)
 	hm, err := hybrid.New(hybrid.DefaultDiskOptions)
 	if err != nil {
 		return nil, err
@@ -45,7 +53,7 @@ func NewDialer(options Options) (*Dialer, error) {
 		// nolint:errcheck // if they cannot be loaded it's not a hard failure
 		loadHostsFile(hm)
 	}
-
+	dnsclient := retryabledns.New(resolvers, options.MaxRetries)
 	return &Dialer{dnsclient: dnsclient, hm: hm, dialerHistory: dialerHistory, dialer: dialer, options: &options}, nil
 }
 

@@ -28,7 +28,7 @@ func loadHostsFile(hm *hybrid.HybridMap) error {
 	dnsDatas := make(map[string]retryabledns.DNSData)
 	scanner := bufio.NewScanner(utfbom.SkipOnly(file))
 	for scanner.Scan() {
-		ip, hosts := HandleLine(scanner.Text())
+		ip, hosts := HandleHostLine(scanner.Text())
 		if ip == "" || len(hosts) == 0 {
 			continue
 		}
@@ -58,8 +58,8 @@ func loadHostsFile(hm *hybrid.HybridMap) error {
 
 const commentChar string = "#"
 
-// HandleLine a hosts file line
-func HandleLine(raw string) (ip string, hosts []string) {
+// HandleHostLine a hosts file line
+func HandleHostLine(raw string) (ip string, hosts []string) {
 	// ignore comment
 	if IsComment(raw) {
 		return

@@ -12,6 +12,7 @@ type Options struct {
 	BaseResolvers  []string
 	MaxRetries     int
 	HostsFile      bool
+	ResolversFile  bool
 	EnableFallback bool
 }
 
@@ -20,4 +21,5 @@ var DefaultOptions = Options{
 	BaseResolvers: DefaultResolvers,
 	MaxRetries:    5,
 	HostsFile:     true,
+	ResolversFile: true,
 }
