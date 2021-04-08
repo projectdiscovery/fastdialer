@@ -131,6 +131,9 @@ func (d *Dialer) dial(ctx context.Context, network, address string, shouldUseTLS
 			break
 		}
 	}
+	if conn == nil {
+		return nil, &NoAddressFoundError{}
+	}
 	return
 }
 
