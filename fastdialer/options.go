@@ -14,6 +14,8 @@ type Options struct {
 	HostsFile      bool
 	ResolversFile  bool
 	EnableFallback bool
+	BlacklistHosts []string
+	WhitelistHosts []string
 }
 
 // DefaultOptions of the cache

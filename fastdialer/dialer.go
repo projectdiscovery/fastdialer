@@ -4,13 +4,14 @@ import (
 	"context"
 	"crypto/tls"
 	"errors"
-	"fmt"
 	"net"
 	"strings"
 	"time"
 
 	"github.com/projectdiscovery/hmap/store/hybrid"
+	"github.com/projectdiscovery/ipranger"
 	retryabledns "github.com/projectdiscovery/retryabledns"
+	"github.com/yl2chen/cidranger"
 )
 
 // Dialer structure containing data information
@@ -20,6 +21,7 @@ type Dialer struct {
 	hm            *hybrid.HybridMap
 	dialerHistory *hybrid.HybridMap
 	dialer        *net.Dialer
+	ranger        *ipranger.IPRanger
 }
 
 // NewDialer instance
@@ -54,7 +56,25 @@ func NewDialer(options Options) (*Dialer, error) {
 		loadHostsFile(hm)
 	}
 	dnsclient := retryabledns.New(resolvers, options.MaxRetries)
-	return &Dialer{dnsclient: dnsclient, hm: hm, dialerHistory: dialerHistory, dialer: dialer, options: &options}, nil
+
+	var ranger ipranger.IPRanger
+	// Populate blacklist if necessary
+	if len(options.BlacklistHosts) > 0 {
+		ranger.RangerExclude = cidranger.NewPCTrieRanger()
+		for _, blacklistHost := range options.BlacklistHosts {
+			ranger.Exclude(blacklistHost)
+		}
+	}
+
+	// Populate whitelist if necessary
+	if len(options.WhitelistHosts) > 0 {
+		ranger.Ranger = cidranger.NewPCTrieRanger()
+		for _, whitelistHost := range options.WhitelistHosts {
+			ranger.Add(whitelistHost)
+		}
+	}
+
+	return &Dialer{dnsclient: dnsclient, hm: hm, dialerHistory: dialerHistory, dialer: dialer, options: &options, ranger: &ranger}, nil
 }
 
 // Dial function compatible with net/http
@@ -89,6 +109,15 @@ func (d *Dialer) dial(ctx context.Context, network, address string, shouldUseTLS
 
 	// Dial to the IPs finally.
 	for _, ip := range append(data.A, data.AAAA...) {
+		// if we have blacklisted hosts, check if the ip is blocked
+		if d.ranger.TotalExcludeIps > 0 && d.ranger.IsExcluded(ip) {
+			continue
+		}
+		// if we have whitelisted hosts, check if ip is allowed
+		if d.ranger.TotalIps > 0 && !d.ranger.Contains(ip) {
+			continue
+		}
+
 		if shouldUseTLS {
 			conn, err = tls.DialWithDialer(d.dialer, network, ip+address[separator:], &tls.Config{InsecureSkipVerify: true})
 		} else {
@@ -126,7 +155,7 @@ func (d *Dialer) GetDNSDataFromCache(hostname string) (*retryabledns.DNSData, er
 	var data retryabledns.DNSData
 	dataBytes, ok := d.hm.Get(hostname)
 	if !ok {
-		return nil, fmt.Errorf("No data found")
+		return nil, errors.New("no data found")
 	}
 
 	err := data.Unmarshal(dataBytes)
