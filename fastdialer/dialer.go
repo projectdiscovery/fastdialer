@@ -150,7 +150,7 @@ func (d *Dialer) GetDNSData(hostname string) (*retryabledns.DNSData, error) {
 	data, err = d.GetDNSDataFromCache(hostname)
 	if err != nil {
 		data, err = d.dnsclient.Resolve(hostname)
-		if d.options.EnableFallback {
+		if err != nil && d.options.EnableFallback {
 			data, err = d.dnsclient.ResolveWithSyscall(hostname)
 		}
 		if err != nil {
