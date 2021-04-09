@@ -9,9 +9,8 @@ import (
 	"time"
 
 	"github.com/projectdiscovery/hmap/store/hybrid"
-	"github.com/projectdiscovery/ipranger"
+	"github.com/projectdiscovery/networkpolicy"
 	retryabledns "github.com/projectdiscovery/retryabledns"
-	"github.com/yl2chen/cidranger"
 )
 
 // Dialer structure containing data information
@@ -21,7 +20,7 @@ type Dialer struct {
 	hm            *hybrid.HybridMap
 	dialerHistory *hybrid.HybridMap
 	dialer        *net.Dialer
-	ranger        *ipranger.IPRanger
+	networkpolicy *networkpolicy.NetworkPolicy
 }
 
 // NewDialer instance
@@ -57,24 +56,18 @@ func NewDialer(options Options) (*Dialer, error) {
 	}
 	dnsclient := retryabledns.New(resolvers, options.MaxRetries)
 
-	var ranger ipranger.IPRanger
-	// Populate blacklist if necessary
-	if len(options.BlacklistHosts) > 0 {
-		ranger.RangerExclude = cidranger.NewPCTrieRanger()
-		for _, blacklistHost := range options.BlacklistHosts {
-			ranger.Exclude(blacklistHost)
-		}
+	var npOptions networkpolicy.Options
+	// Populate deny list if necessary
+	npOptions.DenyList = append(npOptions.DenyList, options.Deny...)
+	// Populate allow list if necessary
+	npOptions.AllowList = append(npOptions.AllowList, options.Allow...)
+
+	np, err := networkpolicy.New(npOptions)
+	if err != nil {
+		return nil, err
 	}
 
-	// Populate whitelist if necessary
-	if len(options.WhitelistHosts) > 0 {
-		ranger.Ranger = cidranger.NewPCTrieRanger()
-		for _, whitelistHost := range options.WhitelistHosts {
-			ranger.Add(whitelistHost)
-		}
-	}
-
-	return &Dialer{dnsclient: dnsclient, hm: hm, dialerHistory: dialerHistory, dialer: dialer, options: &options, ranger: &ranger}, nil
+	return &Dialer{dnsclient: dnsclient, hm: hm, dialerHistory: dialerHistory, dialer: dialer, options: &options, networkpolicy: np}, nil
 }
 
 // Dial function compatible with net/http
@@ -109,12 +102,8 @@ func (d *Dialer) dial(ctx context.Context, network, address string, shouldUseTLS
 
 	// Dial to the IPs finally.
 	for _, ip := range append(data.A, data.AAAA...) {
-		// if we have blacklisted hosts, check if the ip is blocked
-		if d.ranger.TotalExcludeIps > 0 && d.ranger.IsExcluded(ip) {
-			continue
-		}
-		// if we have whitelisted hosts, check if ip is allowed
-		if d.ranger.TotalIps > 0 && !d.ranger.Contains(ip) {
+		// check if we have allow/deny list
+		if !d.networkpolicy.Validate(ip) {
 			continue
 		}
 
