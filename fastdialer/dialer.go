@@ -5,6 +5,7 @@ import (
 	"crypto/tls"
 	"errors"
 	"fmt"
+	"github.com/miekg/dns"
 	"net"
 	"strings"
 	"time"
@@ -150,6 +151,33 @@ func (d *Dialer) GetDNSData(hostname string) (*retryabledns.DNSData, error) {
 	data, err = d.GetDNSDataFromCache(hostname)
 	if err != nil {
 		data, err = d.dnsclient.Resolve(hostname)
+		if err != nil && d.options.EnableFallback {
+			data, err = d.dnsclient.ResolveWithSyscall(hostname)
+		}
+		if err != nil {
+			return nil, err
+		}
+		if data == nil {
+			return nil, errors.New("could not resolve host")
+		}
+		b, _ := data.Marshal()
+		err = d.hm.Set(hostname, b)
+		if err != nil {
+			return nil, err
+		}
+		return data, nil
+	}
+	return data, nil
+}
+
+func (d *Dialer) GetDNSDataWithCName(hostname string) (*retryabledns.DNSData, error) {
+	var (
+		data *retryabledns.DNSData
+		err  error
+	)
+	data, err = d.GetDNSDataFromCache(hostname)
+	if err != nil || data.CNAME == nil {
+		data, err = d.dnsclient.QueryMultiple(hostname, []uint16{dns.TypeA, dns.TypeCNAME})
 		if err != nil && d.options.EnableFallback {
 			data, err = d.dnsclient.ResolveWithSyscall(hostname)
 		}
