@@ -9,7 +9,7 @@ import (
 
 	"github.com/dimchansky/utfbom"
 	"github.com/projectdiscovery/hmap/store/hybrid"
-	retryabledns "github.com/projectdiscovery/retryabledns"
+	"github.com/projectdiscovery/retryabledns"
 )
 
 func loadHostsFile(hm *hybrid.HybridMap) error {

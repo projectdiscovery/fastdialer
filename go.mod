@@ -4,11 +4,19 @@ go 1.14
 
 require (
 	github.com/dimchansky/utfbom v1.1.1
-	github.com/golang/snappy v0.0.2 // indirect
-	github.com/miekg/dns v1.1.38 // indirect
+	github.com/golang/protobuf v1.4.3 // indirect
+	github.com/golang/snappy v0.0.3 // indirect
+	github.com/google/go-cmp v0.5.4 // indirect
+	github.com/miekg/dns v1.1.41 // indirect
+	github.com/nxadm/tail v1.4.8 // indirect
+	github.com/onsi/ginkgo v1.15.0 // indirect
+	github.com/onsi/gomega v1.10.5 // indirect
 	github.com/projectdiscovery/hmap v0.0.1
-	github.com/projectdiscovery/retryabledns v1.0.8-0.20210226233812-ee2ecc9839d9
-	golang.org/x/crypto v0.0.0-20201221181555-eec23a3978ad // indirect
-	golang.org/x/net v0.0.0-20210119194325-5f4716e94777 // indirect
-	golang.org/x/sys v0.0.0-20210124154548-22da62e12c0c // indirect
+	github.com/projectdiscovery/iputil v0.0.0-20210429152401-c18a5408ca46 // indirect
+	github.com/projectdiscovery/networkpolicy v0.0.0-20210429152441-95886460520e
+	github.com/projectdiscovery/retryabledns v1.0.11
+	golang.org/x/net v0.0.0-20210428140749-89ef3d95e781 // indirect
+	golang.org/x/sys v0.0.0-20210426230700-d19ff857e887 // indirect
+	google.golang.org/protobuf v1.25.0 // indirect
+	gopkg.in/yaml.v2 v2.4.0 // indirect
 )

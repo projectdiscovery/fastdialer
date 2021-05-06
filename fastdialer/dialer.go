@@ -4,12 +4,12 @@ import (
 	"context"
 	"crypto/tls"
 	"errors"
-	"fmt"
 	"net"
 	"strings"
 	"time"
 
 	"github.com/projectdiscovery/hmap/store/hybrid"
+	"github.com/projectdiscovery/networkpolicy"
 	retryabledns "github.com/projectdiscovery/retryabledns"
 )
 
@@ -20,6 +20,7 @@ type Dialer struct {
 	hm            *hybrid.HybridMap
 	dialerHistory *hybrid.HybridMap
 	dialer        *net.Dialer
+	networkpolicy *networkpolicy.NetworkPolicy
 }
 
 // NewDialer instance
@@ -54,7 +55,19 @@ func NewDialer(options Options) (*Dialer, error) {
 		loadHostsFile(hm)
 	}
 	dnsclient := retryabledns.New(resolvers, options.MaxRetries)
-	return &Dialer{dnsclient: dnsclient, hm: hm, dialerHistory: dialerHistory, dialer: dialer, options: &options}, nil
+
+	var npOptions networkpolicy.Options
+	// Populate deny list if necessary
+	npOptions.DenyList = append(npOptions.DenyList, options.Deny...)
+	// Populate allow list if necessary
+	npOptions.AllowList = append(npOptions.AllowList, options.Allow...)
+
+	np, err := networkpolicy.New(npOptions)
+	if err != nil {
+		return nil, err
+	}
+
+	return &Dialer{dnsclient: dnsclient, hm: hm, dialerHistory: dialerHistory, dialer: dialer, options: &options, networkpolicy: np}, nil
 }
 
 // Dial function compatible with net/http
@@ -89,6 +102,11 @@ func (d *Dialer) dial(ctx context.Context, network, address string, shouldUseTLS
 
 	// Dial to the IPs finally.
 	for _, ip := range append(data.A, data.AAAA...) {
+		// check if we have allow/deny list
+		if !d.networkpolicy.Validate(ip) {
+			continue
+		}
+
 		if shouldUseTLS {
 			conn, err = tls.DialWithDialer(d.dialer, network, ip+address[separator:], &tls.Config{InsecureSkipVerify: true})
 		} else {
@@ -101,6 +119,9 @@ func (d *Dialer) dial(ctx context.Context, network, address string, shouldUseTLS
 			}
 			break
 		}
+	}
+	if conn == nil {
+		return nil, &NoAddressFoundError{}
 	}
 	return
 }
@@ -126,7 +147,7 @@ func (d *Dialer) GetDNSDataFromCache(hostname string) (*retryabledns.DNSData, er
 	var data retryabledns.DNSData
 	dataBytes, ok := d.hm.Get(hostname)
 	if !ok {
-		return nil, fmt.Errorf("No data found")
+		return nil, errors.New("no data found")
 	}
 
 	err := data.Unmarshal(dataBytes)
