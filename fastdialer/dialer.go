@@ -156,6 +156,19 @@ func (d *Dialer) GetDNSDataFromCache(hostname string) (*retryabledns.DNSData, er
 
 // GetDNSData for the given hostname
 func (d *Dialer) GetDNSData(hostname string) (*retryabledns.DNSData, error) {
+	// support http://[::1] http://[::1]:8080
+	// https://datatracker.ietf.org/doc/html/rfc2732
+	// It defines a syntax
+	// for IPv6 addresses and allows the use of "[" and "]" within a URI
+	// explicitly for this reserved purpose.
+	if strings.HasPrefix(hostname, "[") && strings.HasSuffix(hostname, "]") {
+		ipv6host := hostname[1:strings.LastIndex(hostname, "]")]
+		if ip := net.ParseIP(ipv6host); ip != nil {
+			if ip.To16() != nil {
+				return &retryabledns.DNSData{AAAA: []string{hostname}}, nil
+			}
+		}
+	}
 	if ip := net.ParseIP(hostname); ip != nil {
 		if ip.To4() != nil {
 			return &retryabledns.DNSData{A: []string{hostname}}, nil
