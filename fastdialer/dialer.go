@@ -33,14 +33,22 @@ func NewDialer(options Options) (*Dialer, error) {
 			resolvers = systemResolvers
 		}
 	}
+
+	cacheOptions := getHMapConfiguration(options)
 	resolvers = append(resolvers, options.BaseResolvers...)
-	hm, err := hybrid.New(hybrid.DefaultDiskOptions)
+	hm, err := hybrid.New(cacheOptions)
 	if err != nil {
 		return nil, err
 	}
-	dialerHistory, err := hybrid.New(hybrid.DefaultDiskOptions)
-	if err != nil {
-		return nil, err
+	var dialerHistory *hybrid.HybridMap
+	if options.WithDialerHistory {
+		// we need to use disk to store all the dialed ips
+		dialerHistoryCacheOptions := hybrid.DefaultDiskOptions
+		dialerHistoryCacheOptions.DBType = getHMAPDBType(options)
+		dialerHistory, err = hybrid.New(dialerHistoryCacheOptions)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	dialer := &net.Dialer{
@@ -113,9 +121,11 @@ func (d *Dialer) dial(ctx context.Context, network, address string, shouldUseTLS
 			conn, err = d.dialer.DialContext(ctx, network, ip+address[separator:])
 		}
 		if err == nil {
-			setErr := d.dialerHistory.Set(hostname, []byte(ip))
-			if setErr != nil {
-				return nil, err
+			if d.options.WithDialerHistory && d.dialerHistory != nil {
+				setErr := d.dialerHistory.Set(hostname, []byte(ip))
+				if setErr != nil {
+					return nil, err
+				}
 			}
 			break
 		}
@@ -128,12 +138,19 @@ func (d *Dialer) dial(ctx context.Context, network, address string, shouldUseTLS
 
 // Close instance and cleanups
 func (d *Dialer) Close() {
-	d.hm.Close()
-	d.dialerHistory.Close()
+	if d.hm != nil {
+		d.hm.Close()
+	}
+	if d.options.WithDialerHistory && d.dialerHistory != nil {
+		d.dialerHistory.Close()
+	}
 }
 
 // GetDialedIP returns the ip dialed by the HTTP client
 func (d *Dialer) GetDialedIP(hostname string) string {
+	if !d.options.WithDialerHistory || d.dialerHistory == nil {
+		return ""
+	}
 	v, ok := d.dialerHistory.Get(hostname)
 	if ok {
 		return string(v)
@@ -201,4 +218,31 @@ func (d *Dialer) GetDNSData(hostname string) (*retryabledns.DNSData, error) {
 		return data, nil
 	}
 	return data, nil
+}
+
+func getHMapConfiguration(options Options) hybrid.Options {
+	var cacheOptions hybrid.Options
+	switch options.CacheType {
+	case Memory:
+		cacheOptions = hybrid.DefaultMemoryOptions
+		if options.CacheMemoryMaxSize > 0 {
+			cacheOptions.MaxMemorySize = options.CacheMemoryMaxSize
+		}
+	case Disk:
+		cacheOptions = hybrid.DefaultDiskOptions
+		cacheOptions.DBType = getHMAPDBType(options)
+	}
+	if options.WithCleanup {
+		cacheOptions.Cleanup = options.WithCleanup
+	}
+	return cacheOptions
+}
+
+func getHMAPDBType(options Options) hybrid.DBType {
+	switch options.DiskDbType {
+	case Pogreb:
+		return hybrid.PogrebDB
+	default:
+		return hybrid.LevelDB
+	}
 }

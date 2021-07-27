@@ -8,14 +8,33 @@ var DefaultResolvers = []string{
 	"8.8.4.4:53",
 }
 
+type CacheType uint8
+
+const (
+	Memory CacheType = iota
+	Disk
+)
+
+type DiskDBType uint8
+
+const (
+	LevelDB DiskDBType = iota
+	Pogreb
+)
+
 type Options struct {
-	BaseResolvers  []string
-	MaxRetries     int
-	HostsFile      bool
-	ResolversFile  bool
-	EnableFallback bool
-	Allow          []string
-	Deny           []string
+	BaseResolvers      []string
+	MaxRetries         int
+	HostsFile          bool
+	ResolversFile      bool
+	EnableFallback     bool
+	Allow              []string
+	Deny               []string
+	CacheType          CacheType
+	CacheMemoryMaxSize int // used by Memory cache type
+	DiskDbType         DiskDBType
+	WithDialerHistory  bool
+	WithCleanup        bool
 }
 
 // DefaultOptions of the cache
@@ -24,4 +43,5 @@ var DefaultOptions = Options{
 	MaxRetries:    5,
 	HostsFile:     true,
 	ResolversFile: true,
+	CacheType:     Disk,
 }

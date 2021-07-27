@@ -100,6 +100,8 @@ github.com/projectdiscovery/gologger v1.1.4/go.mod h1:Bhb6Bdx2PV1nMaFLoXNBmHIU85
 github.com/projectdiscovery/hmap v0.0.1/go.mod h1:VDEfgzkKQdq7iGTKz8Ooul0NuYHQ8qiDs6r8bPD1Sb0=
 github.com/projectdiscovery/hmap v0.0.2-0.20210616215655-7b78e7f33d1f h1:r0t4/voYErvcK/WBNZkvjZf6aQK0FOnc/sQKjlMS1AA=
 github.com/projectdiscovery/hmap v0.0.2-0.20210616215655-7b78e7f33d1f/go.mod h1:FH+MS/WNKTXJQtdRn+/Zg5WlKCiMN0Z1QUedUIuM5n8=
+github.com/projectdiscovery/hmap v0.0.2-0.20210727180307-d63d35146e97 h1:8a/aroegMrIidq4KSmkndacurmJ8RxwKXd+Qi0NNp2Q=
+github.com/projectdiscovery/hmap v0.0.2-0.20210727180307-d63d35146e97/go.mod h1:FH+MS/WNKTXJQtdRn+/Zg5WlKCiMN0Z1QUedUIuM5n8=
 github.com/projectdiscovery/ipranger v0.0.2/go.mod h1:kcAIk/lo5rW+IzUrFkeYyXnFJ+dKwYooEOHGVPP/RWE=
 github.com/projectdiscovery/iputil v0.0.0-20210414194613-4b4d2517acf0/go.mod h1:PQAqn5h5NXsQTF4ZA00ZTYLRzGCjOtcCq8llAqrsd1A=
 github.com/projectdiscovery/iputil v0.0.0-20210429152401-c18a5408ca46 h1:veDjJpC3q2PLyuYPS3jNeoYgbHvHPWQhwqRPoCe6YTA=
