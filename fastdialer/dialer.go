@@ -4,12 +4,13 @@ import (
 	"bytes"
 	"context"
 	"crypto/tls"
-	"encoding/gob"
+	"encoding/json"
 	"errors"
 	"net"
 	"strings"
 	"time"
 
+	"github.com/projectdiscovery/cryptoutil"
 	"github.com/projectdiscovery/hmap/store/hybrid"
 	"github.com/projectdiscovery/networkpolicy"
 	retryabledns "github.com/projectdiscovery/retryabledns"
@@ -130,7 +131,8 @@ func (d *Dialer) dial(ctx context.Context, network, address string, shouldUseTLS
 			if d.options.WithTLSData && shouldUseTLS {
 				if connTLS, ok := conn.(*tls.Conn); ok {
 					var data bytes.Buffer
-					err := gob.NewEncoder(&data).Encode(connTLS.ConnectionState())
+					connState := connTLS.ConnectionState()
+					err := json.NewEncoder(&data).Encode(cryptoutil.TLSGrab(&connState))
 					if err != nil {
 						return nil, err
 					}
@@ -169,7 +171,7 @@ func (d *Dialer) GetDialedIP(hostname string) string {
 }
 
 // GetTLSData returns the tls data for a hostname
-func (d *Dialer) GetTLSData(hostname string) (*tls.ConnectionState, error) {
+func (d *Dialer) GetTLSData(hostname string) (*cryptoutil.TLSData, error) {
 	if !d.options.WithTLSData {
 		return nil, errors.New("no tls data history available")
 	}
@@ -178,13 +180,13 @@ func (d *Dialer) GetTLSData(hostname string) (*tls.ConnectionState, error) {
 		return nil, errors.New("no tls data found for the key")
 	}
 
-	var connState tls.ConnectionState
-	err := gob.NewDecoder(bytes.NewReader(v)).Decode(&connState)
+	var tlsData cryptoutil.TLSData
+	err := json.NewDecoder(bytes.NewReader(v)).Decode(&tlsData)
 	if err != nil {
 		return nil, err
 	}
 
-	return &connState, nil
+	return &tlsData, nil
 }
 
 // GetDNSDataFromCache cached by the resolver
