@@ -1,8 +1,10 @@
 package fastdialer
 
 import (
+	"bytes"
 	"context"
 	"crypto/tls"
+	"encoding/gob"
 	"errors"
 	"net"
 	"strings"
@@ -19,6 +21,7 @@ type Dialer struct {
 	dnsclient     *retryabledns.Client
 	hm            *hybrid.HybridMap
 	dialerHistory *hybrid.HybridMap
+	dialerTLSData *hybrid.HybridMap
 	dialer        *net.Dialer
 	networkpolicy *networkpolicy.NetworkPolicy
 }
@@ -41,6 +44,13 @@ func NewDialer(options Options) (*Dialer, error) {
 	dialerHistory, err := hybrid.New(hybrid.DefaultDiskOptions)
 	if err != nil {
 		return nil, err
+	}
+	var dialerTLSData *hybrid.HybridMap
+	if options.WithTLSData {
+		dialerTLSData, err = hybrid.New(hybrid.DefaultDiskOptions)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	dialer := &net.Dialer{
@@ -67,7 +77,7 @@ func NewDialer(options Options) (*Dialer, error) {
 		return nil, err
 	}
 
-	return &Dialer{dnsclient: dnsclient, hm: hm, dialerHistory: dialerHistory, dialer: dialer, options: &options, networkpolicy: np}, nil
+	return &Dialer{dnsclient: dnsclient, hm: hm, dialerHistory: dialerHistory, dialerTLSData: dialerTLSData, dialer: dialer, options: &options, networkpolicy: np}, nil
 }
 
 // Dial function compatible with net/http
@@ -117,6 +127,19 @@ func (d *Dialer) dial(ctx context.Context, network, address string, shouldUseTLS
 			if setErr != nil {
 				return nil, err
 			}
+			if d.options.WithTLSData && shouldUseTLS {
+				if connTLS, ok := conn.(*tls.Conn); ok {
+					var data bytes.Buffer
+					err := gob.NewEncoder(&data).Encode(connTLS.ConnectionState())
+					if err != nil {
+						return nil, err
+					}
+					setErr := d.dialerTLSData.Set(hostname, data.Bytes())
+					if setErr != nil {
+						return nil, err
+					}
+				}
+			}
 			break
 		}
 	}
@@ -130,6 +153,9 @@ func (d *Dialer) dial(ctx context.Context, network, address string, shouldUseTLS
 func (d *Dialer) Close() {
 	d.hm.Close()
 	d.dialerHistory.Close()
+	if d.options.WithTLSData {
+		d.dialerTLSData.Close()
+	}
 }
 
 // GetDialedIP returns the ip dialed by the HTTP client
@@ -140,6 +166,25 @@ func (d *Dialer) GetDialedIP(hostname string) string {
 	}
 
 	return ""
+}
+
+// GetTLSData returns the tls data for a hostname
+func (d *Dialer) GetTLSData(hostname string) (*tls.ConnectionState, error) {
+	if !d.options.WithTLSData {
+		return nil, errors.New("no tls data history available")
+	}
+	v, ok := d.dialerTLSData.Get(hostname)
+	if !ok {
+		return nil, errors.New("no tls data found for the key")
+	}
+
+	var connState tls.ConnectionState
+	err := gob.NewDecoder(bytes.NewReader(v)).Decode(&connState)
+	if err != nil {
+		return nil, err
+	}
+
+	return &connState, nil
 }
 
 // GetDNSDataFromCache cached by the resolver

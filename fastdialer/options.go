@@ -16,6 +16,7 @@ type Options struct {
 	EnableFallback bool
 	Allow          []string
 	Deny           []string
+	WithTLSData    bool
 }
 
 // DefaultOptions of the cache
