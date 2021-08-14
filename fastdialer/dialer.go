@@ -100,10 +100,14 @@ func (d *Dialer) dial(ctx context.Context, network, address string, shouldUseTLS
 		return nil, &NoAddressFoundError{}
 	}
 
+	var numInvalidIPS int
+	IPS := append(data.A, data.AAAA...)
+
 	// Dial to the IPs finally.
-	for _, ip := range append(data.A, data.AAAA...) {
+	for _, ip := range IPS {
 		// check if we have allow/deny list
 		if !d.networkpolicy.Validate(ip) {
+			numInvalidIPS++
 			continue
 		}
 
@@ -121,6 +125,9 @@ func (d *Dialer) dial(ctx context.Context, network, address string, shouldUseTLS
 		}
 	}
 	if conn == nil {
+		if numInvalidIPS == len(IPS) {
+			return nil, &NoAddressAllowedError{}
+		}
 		return nil, &NoAddressFoundError{}
 	}
 	return
