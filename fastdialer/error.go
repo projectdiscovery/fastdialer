@@ -9,5 +9,5 @@ func (m *NoAddressFoundError) Error() string {
 type NoAddressAllowedError struct{}
 
 func (m *NoAddressAllowedError) Error() string {
-	return "no allowed address was found for host"
+	return "denied address found for host"
 }
