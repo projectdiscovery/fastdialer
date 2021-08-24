@@ -5,6 +5,7 @@ go 1.14
 require (
 	github.com/dimchansky/utfbom v1.1.1
 	github.com/miekg/dns v1.1.41 // indirect
+	github.com/projectdiscovery/cryptoutil v0.0.0-20210805184155-b5d2512f9345 // indirect
 	github.com/projectdiscovery/hmap v0.0.2-0.20210727180307-d63d35146e97
 	github.com/projectdiscovery/iputil v0.0.0-20210429152401-c18a5408ca46 // indirect
 	github.com/projectdiscovery/networkpolicy v0.0.1

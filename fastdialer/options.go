@@ -35,6 +35,7 @@ type Options struct {
 	DiskDbType         DiskDBType
 	WithDialerHistory  bool
 	WithCleanup        bool
+  WithTLSData    bool
 }
 
 // DefaultOptions of the cache
