@@ -8,7 +8,6 @@ import (
 	"errors"
 	"net"
 	"strings"
-	"time"
 
 	"github.com/projectdiscovery/cryptoutil"
 	"github.com/projectdiscovery/hmap/store/hybrid"
@@ -62,10 +61,15 @@ func NewDialer(options Options) (*Dialer, error) {
 		}
 	}
 
-	dialer := &net.Dialer{
-		Timeout:   10 * time.Second,
-		KeepAlive: 10 * time.Second,
-		DualStack: true,
+	var dialer *net.Dialer
+	if options.Dialer != nil {
+		dialer = options.Dialer
+	} else {
+		dialer = &net.Dialer{
+			Timeout:   options.DialerTimeout,
+			KeepAlive: options.DialerKeepAlive,
+			DualStack: true,
+		}
 	}
 
 	// load hardcoded values from host file
@@ -104,6 +108,9 @@ func (d *Dialer) DialTLS(ctx context.Context, network, address string) (conn net
 func (d *Dialer) dial(ctx context.Context, network, address string, shouldUseTLS bool) (conn net.Conn, err error) {
 	separator := strings.LastIndex(address, ":")
 
+	if separator == -1 {
+		return nil, errors.New("port was not specified")
+	}
 	// check if data is in cache
 	hostname := address[:separator]
 	data, err := d.GetDNSData(hostname)
@@ -176,9 +183,9 @@ func (d *Dialer) Close() {
 	if d.options.WithDialerHistory && d.dialerHistory != nil {
 		d.dialerHistory.Close()
 	}
-  if d.options.WithTLSData {
+	if d.options.WithTLSData {
 		d.dialerTLSData.Close()
-  }
+	}
 }
 
 // GetDialedIP returns the ip dialed by the HTTP client
@@ -279,15 +286,21 @@ func getHMapConfiguration(options Options) hybrid.Options {
 	switch options.CacheType {
 	case Memory:
 		cacheOptions = hybrid.DefaultMemoryOptions
-		if options.CacheMemoryMaxSize > 0 {
-			cacheOptions.MaxMemorySize = options.CacheMemoryMaxSize
+		if options.CacheMemoryMaxItems > 0 {
+			cacheOptions.MaxMemorySize = options.CacheMemoryMaxItems
 		}
 	case Disk:
 		cacheOptions = hybrid.DefaultDiskOptions
 		cacheOptions.DBType = getHMAPDBType(options)
+	case Hybrid:
+		cacheOptions = hybrid.DefaultHybridOptions
 	}
 	if options.WithCleanup {
 		cacheOptions.Cleanup = options.WithCleanup
+		if options.CacheMemoryMaxItems > 0 {
+			cacheOptions.MaxMemorySize = options.CacheMemoryMaxItems
+		}
+		cacheOptions.DBType = getHMAPDBType(options)
 	}
 	return cacheOptions
 }
