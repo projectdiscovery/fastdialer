@@ -139,7 +139,7 @@ func (d *Dialer) dial(ctx context.Context, network, address string, shouldUseTLS
 			if d.options.WithDialerHistory && d.dialerHistory != nil {
 				setErr := d.dialerHistory.Set(hostname, []byte(ip))
 				if setErr != nil {
-					return nil, err
+					return nil, setErr
 				}
 			}
 			if d.options.WithTLSData && shouldUseTLS {
@@ -152,7 +152,7 @@ func (d *Dialer) dial(ctx context.Context, network, address string, shouldUseTLS
 					}
 					setErr := d.dialerTLSData.Set(hostname, data.Bytes())
 					if setErr != nil {
-						return nil, err
+						return nil, setErr
 					}
 				}
 			}
@@ -176,9 +176,9 @@ func (d *Dialer) Close() {
 	if d.options.WithDialerHistory && d.dialerHistory != nil {
 		d.dialerHistory.Close()
 	}
-  if d.options.WithTLSData {
+	if d.options.WithTLSData {
 		d.dialerTLSData.Close()
-  }
+	}
 }
 
 // GetDialedIP returns the ip dialed by the HTTP client
