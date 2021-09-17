@@ -4,15 +4,12 @@ go 1.14
 
 require (
 	github.com/akrylysov/pogreb v0.10.1 // indirect
-	github.com/cespare/xxhash/v2 v2.1.2 // indirect
-	github.com/dgraph-io/ristretto v0.1.0 // indirect
 	github.com/dimchansky/utfbom v1.1.1
-	github.com/golang/glog v1.0.0 // indirect
 	github.com/golang/snappy v0.0.4 // indirect
 	github.com/kr/pretty v0.3.0 // indirect
 	github.com/miekg/dns v1.1.43 // indirect
 	github.com/projectdiscovery/cryptoutil v0.0.0-20210805184155-b5d2512f9345
-	github.com/projectdiscovery/hmap v0.0.2-0.20210917073634-bfb0e9c03800
+	github.com/projectdiscovery/hmap v0.0.2-0.20210917080408-0fd7bd286bfa
 	github.com/projectdiscovery/iputil v0.0.0-20210804143329-3a30fcde43f3 // indirect
 	github.com/projectdiscovery/mapcidr v0.0.8 // indirect
 	github.com/projectdiscovery/networkpolicy v0.0.1
