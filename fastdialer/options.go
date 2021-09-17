@@ -1,5 +1,10 @@
 package fastdialer
 
+import (
+	"net"
+	"time"
+)
+
 // DefaultResolvers trusted
 var DefaultResolvers = []string{
 	"1.1.1.1:53",
@@ -13,6 +18,7 @@ type CacheType uint8
 const (
 	Memory CacheType = iota
 	Disk
+	Hybrid
 )
 
 type DiskDBType uint8
@@ -23,26 +29,31 @@ const (
 )
 
 type Options struct {
-	BaseResolvers      []string
-	MaxRetries         int
-	HostsFile          bool
-	ResolversFile      bool
-	EnableFallback     bool
-	Allow              []string
-	Deny               []string
-	CacheType          CacheType
-	CacheMemoryMaxSize int // used by Memory cache type
-	DiskDbType         DiskDBType
-	WithDialerHistory  bool
-	WithCleanup        bool
-  WithTLSData    bool
+	BaseResolvers       []string
+	MaxRetries          int
+	HostsFile           bool
+	ResolversFile       bool
+	EnableFallback      bool
+	Allow               []string
+	Deny                []string
+	CacheType           CacheType
+	CacheMemoryMaxItems int // used by Memory cache type
+	DiskDbType          DiskDBType
+	WithDialerHistory   bool
+	WithCleanup         bool
+	WithTLSData         bool
+	DialerTimeout       time.Duration
+	DialerKeepAlive     time.Duration
+	Dialer              *net.Dialer
 }
 
 // DefaultOptions of the cache
 var DefaultOptions = Options{
-	BaseResolvers: DefaultResolvers,
-	MaxRetries:    5,
-	HostsFile:     true,
-	ResolversFile: true,
-	CacheType:     Disk,
+	BaseResolvers:   DefaultResolvers,
+	MaxRetries:      5,
+	HostsFile:       true,
+	ResolversFile:   true,
+	CacheType:       Disk,
+	DialerTimeout:   10 * time.Second,
+	DialerKeepAlive: 10 * time.Second,
 }
