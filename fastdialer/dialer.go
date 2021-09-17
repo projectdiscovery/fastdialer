@@ -146,7 +146,7 @@ func (d *Dialer) dial(ctx context.Context, network, address string, shouldUseTLS
 			if d.options.WithDialerHistory && d.dialerHistory != nil {
 				setErr := d.dialerHistory.Set(hostname, []byte(ip))
 				if setErr != nil {
-					return nil, err
+					return nil, setErr
 				}
 			}
 			if d.options.WithTLSData && shouldUseTLS {
@@ -159,7 +159,7 @@ func (d *Dialer) dial(ctx context.Context, network, address string, shouldUseTLS
 					}
 					setErr := d.dialerTLSData.Set(hostname, data.Bytes())
 					if setErr != nil {
-						return nil, err
+						return nil, setErr
 					}
 				}
 			}
@@ -171,6 +171,9 @@ func (d *Dialer) dial(ctx context.Context, network, address string, shouldUseTLS
 			return nil, &NoAddressAllowedError{}
 		}
 		return nil, &NoAddressFoundError{}
+	}
+	if err != nil {
+		return nil, err
 	}
 	return
 }
