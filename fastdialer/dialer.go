@@ -95,17 +95,23 @@ func NewDialer(options Options) (*Dialer, error) {
 
 // Dial function compatible with net/http
 func (d *Dialer) Dial(ctx context.Context, network, address string) (conn net.Conn, err error) {
-	conn, err = d.dial(ctx, network, address, false)
+	conn, err = d.dial(ctx, network, address, false, nil)
 	return
 }
 
 // DialTLS with encrypted connection
 func (d *Dialer) DialTLS(ctx context.Context, network, address string) (conn net.Conn, err error) {
-	conn, err = d.dial(ctx, network, address, true)
+	conn, err = d.DialTLSWithConfig(ctx, network, address, &tls.Config{InsecureSkipVerify: true})
 	return
 }
 
-func (d *Dialer) dial(ctx context.Context, network, address string, shouldUseTLS bool) (conn net.Conn, err error) {
+// DialTLS with encrypted connection
+func (d *Dialer) DialTLSWithConfig(ctx context.Context, network, address string, config *tls.Config) (conn net.Conn, err error) {
+	conn, err = d.dial(ctx, network, address, true, config)
+	return
+}
+
+func (d *Dialer) dial(ctx context.Context, network, address string, shouldUseTLS bool, tlsconfig *tls.Config) (conn net.Conn, err error) {
 	separator := strings.LastIndex(address, ":")
 
 	if separator == -1 {
@@ -138,7 +144,7 @@ func (d *Dialer) dial(ctx context.Context, network, address string, shouldUseTLS
 		}
 
 		if shouldUseTLS {
-			conn, err = tls.DialWithDialer(d.dialer, network, ip+address[separator:], &tls.Config{InsecureSkipVerify: true})
+			conn, err = tls.DialWithDialer(d.dialer, network, ip+address[separator:], tlsconfig)
 		} else {
 			conn, err = d.dialer.DialContext(ctx, network, ip+address[separator:])
 		}
