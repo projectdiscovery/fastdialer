@@ -6,11 +6,13 @@ import (
 	"crypto/tls"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net"
 	"strings"
 
 	"github.com/projectdiscovery/cryptoutil"
 	"github.com/projectdiscovery/hmap/store/hybrid"
+	"github.com/projectdiscovery/iputil"
 	"github.com/projectdiscovery/networkpolicy"
 	retryabledns "github.com/projectdiscovery/retryabledns"
 )
@@ -112,13 +114,27 @@ func (d *Dialer) DialTLSWithConfig(ctx context.Context, network, address string,
 }
 
 func (d *Dialer) dial(ctx context.Context, network, address string, shouldUseTLS bool, tlsconfig *tls.Config) (conn net.Conn, err error) {
-	separator := strings.LastIndex(address, ":")
-
-	if separator == -1 {
+	var hostname, port, fixedIP string
+	addressParts := strings.Split(address, ":")
+	numberOfParts := len(addressParts)
+	if numberOfParts >= 2 {
+		// ip|host:port
+		hostname = addressParts[0]
+		port = addressParts[1]
+		// ip|host:port:ip => curl --resolve ip:port:ip
+		if numberOfParts > 2 {
+			fixedIP = addressParts[2]
+		}
+		// check if the ip is within the context
+		if ctxIP := ctx.Value("ip"); ctxIP != nil {
+			fixedIP = fmt.Sprint(ctxIP)
+		}
+	} else {
+		// no port => error
 		return nil, errors.New("port was not specified")
 	}
+
 	// check if data is in cache
-	hostname := address[:separator]
 	data, err := d.GetDNSData(hostname)
 	if err != nil {
 		// otherwise attempt to retrieve it
@@ -133,7 +149,12 @@ func (d *Dialer) dial(ctx context.Context, network, address string, shouldUseTLS
 	}
 
 	var numInvalidIPS int
-	IPS := append(data.A, data.AAAA...)
+	var IPS []string
+	// use fixed ip as first
+	if fixedIP != "" {
+		IPS = append(IPS, fixedIP)
+	}
+	IPS = append(IPS, append(data.A, data.AAAA...)...)
 
 	// Dial to the IPs finally.
 	for _, ip := range IPS {
@@ -142,11 +163,15 @@ func (d *Dialer) dial(ctx context.Context, network, address string, shouldUseTLS
 			numInvalidIPS++
 			continue
 		}
-
+		hostPort := net.JoinHostPort(ip, port)
 		if shouldUseTLS {
-			conn, err = tls.DialWithDialer(d.dialer, network, ip+address[separator:], tlsconfig)
+			tlsconfigCopy := tlsconfig.Clone()
+			if !iputil.IsIP(hostname) {
+				tlsconfigCopy.ServerName = hostname
+			}
+			conn, err = tls.DialWithDialer(d.dialer, network, hostPort, tlsconfig)
 		} else {
-			conn, err = d.dialer.DialContext(ctx, network, ip+address[separator:])
+			conn, err = d.dialer.DialContext(ctx, network, hostPort)
 		}
 		if err == nil {
 			if d.options.WithDialerHistory && d.dialerHistory != nil {
