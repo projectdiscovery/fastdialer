@@ -104,6 +104,10 @@ func (d *Dialer) Dial(ctx context.Context, network, address string) (conn net.Co
 
 // DialTLS with encrypted connection
 func (d *Dialer) DialTLS(ctx context.Context, network, address string) (conn net.Conn, err error) {
+	if d.options.WithZTLS {
+		conn, err = d.DialZTLSWithConfig(ctx, network, address, &ztls.Config{InsecureSkipVerify: true})
+	}
+
 	conn, err = d.DialTLSWithConfig(ctx, network, address, &tls.Config{InsecureSkipVerify: true})
 	return
 }
@@ -121,8 +125,15 @@ func (d *Dialer) DialTLSWithConfig(ctx context.Context, network, address string,
 }
 
 func (d *Dialer) DialZTLSWithConfig(ctx context.Context, network, address string, config *ztls.Config) (conn net.Conn, err error) {
-	conn, err = d.dial(ctx, network, address, false, true, nil, config)
-	return
+	// ztls doesn't support tls13
+	if IsTLS13(config) {
+		stdTLSConfig, err := AsTLSConfig(config)
+		if err != nil {
+			return nil, err
+		}
+		return d.dial(ctx, network, address, true, false, stdTLSConfig, nil)
+	}
+	return d.dial(ctx, network, address, false, true, nil, config)
 }
 
 func (d *Dialer) dial(ctx context.Context, network, address string, shouldUseTLS, shouldUseZTLS bool, tlsconfig *tls.Config, ztlsconfig *ztls.Config) (conn net.Conn, err error) {
