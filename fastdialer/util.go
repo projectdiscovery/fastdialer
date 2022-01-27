@@ -1,36 +1,22 @@
 package fastdialer
 
 import (
-	"bytes"
 	"crypto/tls"
-	"encoding/gob"
 
+	"github.com/ulule/deepcopier"
 	ztls "github.com/zmap/zcrypto/tls"
 )
 
 func AsTLSConfig(ztlsConfig *ztls.Config) (*tls.Config, error) {
 	tlsConfig := &tls.Config{}
-	err := To(ztlsConfig, tlsConfig)
+	err := deepcopier.Copy(ztlsConfig).To(tlsConfig)
 	return tlsConfig, err
 }
 
 func AsZTLSConfig(tlsConfig *tls.Config) (*ztls.Config, error) {
 	ztlsConfig := &ztls.Config{}
-	err := To(tlsConfig, ztlsConfig)
+	err := deepcopier.Copy(tlsConfig).To(ztlsConfig)
 	return ztlsConfig, err
-}
-
-func To(from, to interface{}) error {
-	buf := bytes.Buffer{}
-	err := gob.NewEncoder(&buf).Encode(from)
-	if err != nil {
-		return err
-	}
-	err = gob.NewDecoder(&buf).Decode(to)
-	if err != nil {
-		return err
-	}
-	return nil
 }
 
 func IsTLS13(config interface{}) bool {
