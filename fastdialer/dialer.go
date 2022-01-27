@@ -105,11 +105,10 @@ func (d *Dialer) Dial(ctx context.Context, network, address string) (conn net.Co
 // DialTLS with encrypted connection
 func (d *Dialer) DialTLS(ctx context.Context, network, address string) (conn net.Conn, err error) {
 	if d.options.WithZTLS {
-		conn, err = d.DialZTLSWithConfig(ctx, network, address, &ztls.Config{InsecureSkipVerify: true})
+		return d.DialZTLSWithConfig(ctx, network, address, &ztls.Config{InsecureSkipVerify: true})
 	}
 
-	conn, err = d.DialTLSWithConfig(ctx, network, address, &tls.Config{InsecureSkipVerify: true})
-	return
+	return d.DialTLSWithConfig(ctx, network, address, &tls.Config{InsecureSkipVerify: true})
 }
 
 // DialZTLS with encrypted connection using ztls
