@@ -116,37 +116,37 @@ func (d *Dialer) DialTLSWithConfig(ctx context.Context, network, address string,
 func (d *Dialer) dial(ctx context.Context, network, address string, shouldUseTLS bool, tlsconfig *tls.Config) (conn net.Conn, err error) {
 	var hostname, port, fixedIP string
 
-    if strings.HasPrefix(address, "[") {
-        closeBracketIndex := strings.Index(address, "]")
-        if closeBracketIndex == -1 {
-            return nil, errors.New("malformed IPv6 address")
-        }
-        hostname = address[:closeBracketIndex+1]
-        if len(address) < closeBracketIndex+2 {
-            return nil, errors.New("port was not specified")
-        }
-        port = address[closeBracketIndex+2:]
-    } else {
-        addressParts := strings.SplitN(address, ":", 3)
-        numberOfParts := len(addressParts)
+	if strings.HasPrefix(address, "[") {
+		closeBracketIndex := strings.Index(address, "]")
+		if closeBracketIndex == -1 {
+			return nil, errors.New("malformed IPv6 address")
+		}
+		hostname = address[:closeBracketIndex+1]
+		if len(address) < closeBracketIndex+2 {
+			return nil, errors.New("port was not specified")
+		}
+		port = address[closeBracketIndex+2:]
+	} else {
+		addressParts := strings.SplitN(address, ":", 3)
+		numberOfParts := len(addressParts)
 
-        if numberOfParts >= 2 {
-            // ip|host:port
-            hostname = addressParts[0]
-            port = addressParts[1]
-            // ip|host:port:ip => curl --resolve ip:port:ip
-            if numberOfParts > 2 {
-                fixedIP = addressParts[2]
-            }
-            // check if the ip is within the context
-            if ctxIP := ctx.Value("ip"); ctxIP != nil {
-                fixedIP = fmt.Sprint(ctxIP)
-            }
-        } else {
-            // no port => error
-            return nil, errors.New("port was not specified")
-        }
-    }
+		if numberOfParts >= 2 {
+			// ip|host:port
+			hostname = addressParts[0]
+			port = addressParts[1]
+			// ip|host:port:ip => curl --resolve ip:port:ip
+			if numberOfParts > 2 {
+				fixedIP = addressParts[2]
+			}
+			// check if the ip is within the context
+			if ctxIP := ctx.Value("ip"); ctxIP != nil {
+				fixedIP = fmt.Sprint(ctxIP)
+			}
+		} else {
+			// no port => error
+			return nil, errors.New("port was not specified")
+		}
+	}
 
 	// check if data is in cache
 	data, err := d.GetDNSData(hostname)

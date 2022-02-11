@@ -75,16 +75,16 @@ func testDialerIpv6(t *testing.T, options Options) {
 		t.Error("no AAAA results found")
 	}
 
-    // test address pinning
-    // this test passes, but will fail if the hard-coded ipv6 address changes
-    // need to find a better way to test this
-    /*
-    conn, err = fd.Dial(ctx, "tcp", "ipv6.google.com:80:[2607:f8b0:4006:807::200e]")
-	if err != nil || conn == nil {
-		t.Errorf("couldn't connect to target: %s", err)
-	}
-	conn.Close()
-    */
+	// test address pinning
+	// this test passes, but will fail if the hard-coded ipv6 address changes
+	// need to find a better way to test this
+	/*
+	    conn, err = fd.Dial(ctx, "tcp", "ipv6.google.com:80:[2607:f8b0:4006:807::200e]")
+		if err != nil || conn == nil {
+			t.Errorf("couldn't connect to target: %s", err)
+		}
+		conn.Close()
+	*/
 
 	// cleanup
 	fd.Close()
