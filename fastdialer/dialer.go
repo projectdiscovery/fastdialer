@@ -30,7 +30,6 @@ type Dialer struct {
 
 // NewDialer instance
 func NewDialer(options Options) (*Dialer, error) {
-	fmt.Println("building dialer")
 	var resolvers []string
 	// Add system resolvers as the first to be tried
 	if options.ResolversFile {
@@ -115,41 +114,48 @@ func (d *Dialer) DialTLSWithConfig(ctx context.Context, network, address string,
 }
 
 func (d *Dialer) dial(ctx context.Context, network, address string, shouldUseTLS bool, tlsconfig *tls.Config) (conn net.Conn, err error) {
-
-	fmt.Printf("dialing %s\n", address)
 	var hostname, port, fixedIP string
-	addressParts := strings.Split(address, ":")
-	numberOfParts := len(addressParts)
-	if numberOfParts >= 2 {
-		// ip|host:port
-		hostname = strings.Join(addressParts[:len(addressParts)-1], ":")
-		port = addressParts[len(addressParts)-1]
-		// ip|host:port:ip => curl --resolve ip:port:ip
-		if numberOfParts > 2 {
-			//fixedIP = addressParts[2]
-		}
-		// check if the ip is within the context
-		if ctxIP := ctx.Value("ip"); ctxIP != nil {
-			fixedIP = fmt.Sprint(ctxIP)
-		}
-	} else {
-		// no port => error
-		return nil, errors.New("port was not specified")
-	}
-	fmt.Printf("hostname: %s\n", hostname)
-	fmt.Printf("port: %s\n", port)
+
+    if strings.HasPrefix(address, "[") {
+        closeBracketIndex := strings.Index(address, "]")
+        if closeBracketIndex == -1 {
+            return nil, errors.New("malformed IPv6 address")
+        }
+        hostname = address[:closeBracketIndex+1]
+        if len(address) < closeBracketIndex+2 {
+            return nil, errors.New("port was not specified")
+        }
+        port = address[closeBracketIndex+2:]
+    } else {
+        addressParts := strings.SplitN(address, ":", 3)
+        numberOfParts := len(addressParts)
+
+        if numberOfParts >= 2 {
+            // ip|host:port
+            hostname = addressParts[0]
+            port = addressParts[1]
+            // ip|host:port:ip => curl --resolve ip:port:ip
+            if numberOfParts > 2 {
+                fixedIP = addressParts[2]
+            }
+            // check if the ip is within the context
+            if ctxIP := ctx.Value("ip"); ctxIP != nil {
+                fixedIP = fmt.Sprint(ctxIP)
+            }
+        } else {
+            // no port => error
+            return nil, errors.New("port was not specified")
+        }
+    }
 
 	// check if data is in cache
 	data, err := d.GetDNSData(hostname)
-	fmt.Printf("data: %v\n", data)
-	fmt.Printf("err: %v\n", err)
 	if err != nil {
 		// otherwise attempt to retrieve it
 		data, err = d.dnsclient.Resolve(hostname)
 
 	}
 	if data == nil {
-		fmt.Println(err)
 		return nil, errors.New("could not resolve host")
 	}
 
@@ -165,17 +171,14 @@ func (d *Dialer) dial(ctx context.Context, network, address string, shouldUseTLS
 	}
 	IPS = append(IPS, append(data.A, data.AAAA...)...)
 
-	fmt.Printf("ips %s\n", IPS)
 	// Dial to the IPs finally.
 	for _, ip := range IPS {
-		fmt.Printf("dialing %s\n", ip)
 		// check if we have allow/deny list
 		if !d.networkpolicy.Validate(ip) {
 			numInvalidIPS++
 			continue
 		}
 		hostPort := net.JoinHostPort(ip, port)
-		fmt.Printf("dialing %s\n", hostPort)
 		if shouldUseTLS {
 			tlsconfigCopy := tlsconfig.Clone()
 			if !iputil.IsIP(hostname) {
@@ -268,7 +271,6 @@ func (d *Dialer) GetTLSData(hostname string) (*cryptoutil.TLSData, error) {
 
 // GetDNSDataFromCache cached by the resolver
 func (d *Dialer) GetDNSDataFromCache(hostname string) (*retryabledns.DNSData, error) {
-	return nil, errors.New("no data found")
 	var data retryabledns.DNSData
 	dataBytes, ok := d.hm.Get(hostname)
 	if !ok {
@@ -287,13 +289,9 @@ func (d *Dialer) GetDNSData(hostname string) (*retryabledns.DNSData, error) {
 	// for IPv6 addresses and allows the use of "[" and "]" within a URI
 	// explicitly for this reserved purpose.
 	if strings.HasPrefix(hostname, "[") && strings.HasSuffix(hostname, "]") {
-		fmt.Printf("GetDNSData v6\n")
 		ipv6host := hostname[1:strings.LastIndex(hostname, "]")]
-		fmt.Printf("ipv6host %s\n", ipv6host)
 		if ip := net.ParseIP(ipv6host); ip != nil {
-			fmt.Printf("ip %s\n", ip)
 			if ip.To16() != nil {
-				fmt.Printf("To16\n")
 				return &retryabledns.DNSData{AAAA: []string{ip.To16().String()}}, nil
 			}
 		}
@@ -310,11 +308,8 @@ func (d *Dialer) GetDNSData(hostname string) (*retryabledns.DNSData, error) {
 		data *retryabledns.DNSData
 		err  error
 	)
-	fmt.Println("get from cache")
 	data, err = d.GetDNSDataFromCache(hostname)
-	fmt.Printf("%s\n", data)
 	if err != nil {
-		fmt.Println("dnsclient Resolve")
 		data, err = d.dnsclient.Resolve(hostname)
 		if err != nil && d.options.EnableFallback {
 			data, err = d.dnsclient.ResolveWithSyscall(hostname)
