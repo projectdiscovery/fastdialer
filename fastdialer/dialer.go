@@ -5,7 +5,6 @@ import (
 	"context"
 	"crypto/tls"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"net"
 	"strings"
@@ -119,11 +118,11 @@ func (d *Dialer) dial(ctx context.Context, network, address string, shouldUseTLS
 	if strings.HasPrefix(address, "[") {
 		closeBracketIndex := strings.Index(address, "]")
 		if closeBracketIndex == -1 {
-			return nil, errors.New("malformed IPv6 address")
+			return nil, MalformedIP6Error
 		}
 		hostname = address[:closeBracketIndex+1]
 		if len(address) < closeBracketIndex+2 {
-			return nil, errors.New("port was not specified")
+			return nil, NoPortSpecifiedError
 		}
 		port = address[closeBracketIndex+2:]
 	} else {
@@ -144,7 +143,7 @@ func (d *Dialer) dial(ctx context.Context, network, address string, shouldUseTLS
 			}
 		} else {
 			// no port => error
-			return nil, errors.New("port was not specified")
+			return nil, NoPortSpecifiedError
 		}
 	}
 
@@ -156,11 +155,11 @@ func (d *Dialer) dial(ctx context.Context, network, address string, shouldUseTLS
 
 	}
 	if data == nil {
-		return nil, errors.New("could not resolve host")
+		return nil, ResolveHostError
 	}
 
 	if err != nil || len(data.A)+len(data.AAAA) == 0 {
-		return nil, &NoAddressFoundError{}
+		return nil, NoAddressFoundError
 	}
 
 	var numInvalidIPS int
@@ -214,9 +213,9 @@ func (d *Dialer) dial(ctx context.Context, network, address string, shouldUseTLS
 	}
 	if conn == nil {
 		if numInvalidIPS == len(IPS) {
-			return nil, &NoAddressAllowedError{}
+			return nil, NoAddressAllowedError
 		}
-		return nil, &NoAddressFoundError{}
+		return nil, NoAddressFoundError
 	}
 	if err != nil {
 		return nil, err
@@ -253,11 +252,11 @@ func (d *Dialer) GetDialedIP(hostname string) string {
 // GetTLSData returns the tls data for a hostname
 func (d *Dialer) GetTLSData(hostname string) (*cryptoutil.TLSData, error) {
 	if !d.options.WithTLSData {
-		return nil, errors.New("no tls data history available")
+		return nil, NoTLSHistoryError
 	}
 	v, ok := d.dialerTLSData.Get(hostname)
 	if !ok {
-		return nil, errors.New("no tls data found for the key")
+		return nil, NoTLSDataError
 	}
 
 	var tlsData cryptoutil.TLSData
@@ -274,7 +273,7 @@ func (d *Dialer) GetDNSDataFromCache(hostname string) (*retryabledns.DNSData, er
 	var data retryabledns.DNSData
 	dataBytes, ok := d.hm.Get(hostname)
 	if !ok {
-		return nil, errors.New("no data found")
+		return nil, NoDNSDataError
 	}
 
 	err := data.Unmarshal(dataBytes)
@@ -318,7 +317,7 @@ func (d *Dialer) GetDNSData(hostname string) (*retryabledns.DNSData, error) {
 			return nil, err
 		}
 		if data == nil {
-			return nil, errors.New("could not resolve host")
+			return nil, ResolveHostError
 		}
 		b, _ := data.Marshal()
 		err = d.hm.Set(hostname, b)

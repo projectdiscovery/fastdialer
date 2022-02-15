@@ -1,13 +1,16 @@
 package fastdialer
 
-type NoAddressFoundError struct{}
+import (
+	"github.com/pkg/errors"
+)
 
-func (m *NoAddressFoundError) Error() string {
-	return "no address found for host"
-}
-
-type NoAddressAllowedError struct{}
-
-func (m *NoAddressAllowedError) Error() string {
-	return "denied address found for host"
-}
+var (
+	NoAddressFoundError   = errors.New("no address found for host")
+	NoAddressAllowedError = errors.New("denied address found for host")
+	NoPortSpecifiedError  = errors.New("port was not specified")
+	MalformedIP6Error     = errors.New("malformed IPv6 address")
+	ResolveHostError      = errors.New("could not resolve host")
+	NoTLSHistoryError     = errors.New("no tls data history available")
+	NoTLSDataError        = errors.New("no tls data found for the key")
+	NoDNSDataError        = errors.New("no data found")
+)
