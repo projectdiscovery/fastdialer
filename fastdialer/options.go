@@ -45,6 +45,7 @@ type Options struct {
 	DialerTimeout       time.Duration
 	DialerKeepAlive     time.Duration
 	Dialer              *net.Dialer
+	WithZTLS            bool
 }
 
 // DefaultOptions of the cache

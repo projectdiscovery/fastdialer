@@ -14,6 +14,7 @@ import (
 	"github.com/projectdiscovery/iputil"
 	"github.com/projectdiscovery/networkpolicy"
 	retryabledns "github.com/projectdiscovery/retryabledns"
+	ztls "github.com/zmap/zcrypto/tls"
 )
 
 // Dialer structure containing data information
@@ -96,23 +97,44 @@ func NewDialer(options Options) (*Dialer, error) {
 
 // Dial function compatible with net/http
 func (d *Dialer) Dial(ctx context.Context, network, address string) (conn net.Conn, err error) {
-	conn, err = d.dial(ctx, network, address, false, nil)
+	conn, err = d.dial(ctx, network, address, false, false, nil, nil)
 	return
 }
 
 // DialTLS with encrypted connection
 func (d *Dialer) DialTLS(ctx context.Context, network, address string) (conn net.Conn, err error) {
-	conn, err = d.DialTLSWithConfig(ctx, network, address, &tls.Config{InsecureSkipVerify: true})
+	if d.options.WithZTLS {
+		return d.DialZTLSWithConfig(ctx, network, address, &ztls.Config{InsecureSkipVerify: true})
+	}
+
+	return d.DialTLSWithConfig(ctx, network, address, &tls.Config{InsecureSkipVerify: true})
+}
+
+// DialZTLS with encrypted connection using ztls
+func (d *Dialer) DialZTLS(ctx context.Context, network, address string) (conn net.Conn, err error) {
+	conn, err = d.DialZTLSWithConfig(ctx, network, address, &ztls.Config{InsecureSkipVerify: true})
 	return
 }
 
 // DialTLS with encrypted connection
 func (d *Dialer) DialTLSWithConfig(ctx context.Context, network, address string, config *tls.Config) (conn net.Conn, err error) {
-	conn, err = d.dial(ctx, network, address, true, config)
+	conn, err = d.dial(ctx, network, address, true, false, config, nil)
 	return
 }
 
-func (d *Dialer) dial(ctx context.Context, network, address string, shouldUseTLS bool, tlsconfig *tls.Config) (conn net.Conn, err error) {
+func (d *Dialer) DialZTLSWithConfig(ctx context.Context, network, address string, config *ztls.Config) (conn net.Conn, err error) {
+	// ztls doesn't support tls13
+	if IsTLS13(config) {
+		stdTLSConfig, err := AsTLSConfig(config)
+		if err != nil {
+			return nil, err
+		}
+		return d.dial(ctx, network, address, true, false, stdTLSConfig, nil)
+	}
+	return d.dial(ctx, network, address, false, true, nil, config)
+}
+
+func (d *Dialer) dial(ctx context.Context, network, address string, shouldUseTLS, shouldUseZTLS bool, tlsconfig *tls.Config, ztlsconfig *ztls.Config) (conn net.Conn, err error) {
 	var hostname, port, fixedIP string
 
 	if strings.HasPrefix(address, "[") {
@@ -184,6 +206,12 @@ func (d *Dialer) dial(ctx context.Context, network, address string, shouldUseTLS
 				tlsconfigCopy.ServerName = hostname
 			}
 			conn, err = tls.DialWithDialer(d.dialer, network, hostPort, tlsconfig)
+		} else if shouldUseZTLS {
+			ztlsconfigCopy := ztlsconfig.Clone()
+			if !iputil.IsIP(hostname) {
+				ztlsconfigCopy.ServerName = hostname
+			}
+			conn, err = ztls.DialWithDialer(d.dialer, network, hostPort, ztlsconfigCopy)
 		} else {
 			conn, err = d.dialer.DialContext(ctx, network, hostPort)
 		}
