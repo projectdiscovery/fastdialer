@@ -15,6 +15,7 @@ import (
 	"github.com/projectdiscovery/networkpolicy"
 	retryabledns "github.com/projectdiscovery/retryabledns"
 	ztls "github.com/zmap/zcrypto/tls"
+	"golang.org/x/net/idna"
 )
 
 // Dialer structure containing data information
@@ -349,9 +350,14 @@ func (d *Dialer) GetDNSData(hostname string) (*retryabledns.DNSData, error) {
 	)
 	data, err = d.GetDNSDataFromCache(hostname)
 	if err != nil {
-		data, err = d.dnsclient.Resolve(hostname)
+		s, err := idna.New().ToASCII(hostname)
+		if err != nil {
+			return nil, fmt.Errorf("failed to convert hostname to ASCII: %w", err)
+		}
+
+		data, err = d.dnsclient.Resolve(s)
 		if err != nil && d.options.EnableFallback {
-			data, err = d.dnsclient.ResolveWithSyscall(hostname)
+			data, err = d.dnsclient.ResolveWithSyscall(s)
 		}
 		if err != nil {
 			return nil, err
