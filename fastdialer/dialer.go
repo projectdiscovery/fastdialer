@@ -202,13 +202,25 @@ func (d *Dialer) dial(ctx context.Context, network, address string, shouldUseTLS
 		hostPort := net.JoinHostPort(ip, port)
 		if shouldUseTLS {
 			tlsconfigCopy := tlsconfig.Clone()
-			if !iputil.IsIP(hostname) {
+			switch {
+			case d.options.SNIName != "":
+				tlsconfigCopy.ServerName = d.options.SNIName
+			case ctx.Value(SniName) != nil:
+				sniName := ctx.Value(SniName).(string)
+				tlsconfigCopy.ServerName = sniName
+			case !iputil.IsIP(hostname):
 				tlsconfigCopy.ServerName = hostname
 			}
-			conn, err = tls.DialWithDialer(d.dialer, network, hostPort, tlsconfig)
+			conn, err = tls.DialWithDialer(d.dialer, network, hostPort, tlsconfigCopy)
 		} else if shouldUseZTLS {
 			ztlsconfigCopy := ztlsconfig.Clone()
-			if !iputil.IsIP(hostname) {
+			switch {
+			case d.options.SNIName != "":
+				ztlsconfigCopy.ServerName = d.options.SNIName
+			case ctx.Value(SniName) != nil:
+				sniName := ctx.Value(SniName).(string)
+				ztlsconfigCopy.ServerName = sniName
+			case !iputil.IsIP(hostname):
 				ztlsconfigCopy.ServerName = hostname
 			}
 			conn, err = ztls.DialWithDialer(d.dialer, network, hostPort, ztlsconfigCopy)
