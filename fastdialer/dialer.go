@@ -350,14 +350,13 @@ func (d *Dialer) GetDNSData(hostname string) (*retryabledns.DNSData, error) {
 	)
 	data, err = d.GetDNSDataFromCache(hostname)
 	if err != nil {
-		s, err := idna.New().ToASCII(hostname)
+		hostnameAscii, err := idna.New().ToASCII(hostname)
 		if err != nil {
-			return nil, fmt.Errorf("failed to convert hostname to ASCII: %w", err)
+			return nil, AsciiConversionError
 		}
-
-		data, err = d.dnsclient.Resolve(s)
+		data, err = d.dnsclient.Resolve(hostnameAscii)
 		if err != nil && d.options.EnableFallback {
-			data, err = d.dnsclient.ResolveWithSyscall(s)
+			data, err = d.dnsclient.ResolveWithSyscall(hostnameAscii)
 		}
 		if err != nil {
 			return nil, err
