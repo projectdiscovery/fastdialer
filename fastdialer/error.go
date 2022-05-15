@@ -13,4 +13,5 @@ var (
 	NoTLSHistoryError     = errors.New("no tls data history available")
 	NoTLSDataError        = errors.New("no tls data found for the key")
 	NoDNSDataError        = errors.New("no data found")
+	AsciiConversionError  = errors.New("could not convert hostname to ASCII")
 )
