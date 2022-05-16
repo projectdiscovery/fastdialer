@@ -15,7 +15,6 @@ import (
 	"github.com/projectdiscovery/networkpolicy"
 	retryabledns "github.com/projectdiscovery/retryabledns"
 	ztls "github.com/zmap/zcrypto/tls"
-	"golang.org/x/net/idna"
 )
 
 // Dialer structure containing data information
@@ -171,6 +170,7 @@ func (d *Dialer) dial(ctx context.Context, network, address string, shouldUseTLS
 	}
 
 	// check if data is in cache
+	hostname = asAscii(hostname)
 	data, err := d.GetDNSData(hostname)
 	if err != nil {
 		// otherwise attempt to retrieve it
@@ -282,6 +282,7 @@ func (d *Dialer) GetDialedIP(hostname string) string {
 	if !d.options.WithDialerHistory || d.dialerHistory == nil {
 		return ""
 	}
+	hostname = asAscii(hostname)
 	v, ok := d.dialerHistory.Get(hostname)
 	if ok {
 		return string(v)
@@ -292,6 +293,7 @@ func (d *Dialer) GetDialedIP(hostname string) string {
 
 // GetTLSData returns the tls data for a hostname
 func (d *Dialer) GetTLSData(hostname string) (*cryptoutil.TLSData, error) {
+	hostname = asAscii(hostname)
 	if !d.options.WithTLSData {
 		return nil, NoTLSHistoryError
 	}
@@ -311,6 +313,7 @@ func (d *Dialer) GetTLSData(hostname string) (*cryptoutil.TLSData, error) {
 
 // GetDNSDataFromCache cached by the resolver
 func (d *Dialer) GetDNSDataFromCache(hostname string) (*retryabledns.DNSData, error) {
+	hostname = asAscii(hostname)
 	var data retryabledns.DNSData
 	dataBytes, ok := d.hm.Get(hostname)
 	if !ok {
@@ -323,6 +326,7 @@ func (d *Dialer) GetDNSDataFromCache(hostname string) (*retryabledns.DNSData, er
 
 // GetDNSData for the given hostname
 func (d *Dialer) GetDNSData(hostname string) (*retryabledns.DNSData, error) {
+	hostname = asAscii(hostname)
 	// support http://[::1] http://[::1]:8080
 	// https://datatracker.ietf.org/doc/html/rfc2732
 	// It defines a syntax
@@ -350,13 +354,9 @@ func (d *Dialer) GetDNSData(hostname string) (*retryabledns.DNSData, error) {
 	)
 	data, err = d.GetDNSDataFromCache(hostname)
 	if err != nil {
-		hostnameAscii, err := idna.ToASCII(hostname)
-		if err != nil {
-			return nil, AsciiConversionError
-		}
-		data, err = d.dnsclient.Resolve(hostnameAscii)
+		data, err = d.dnsclient.Resolve(hostname)
 		if err != nil && d.options.EnableFallback {
-			data, err = d.dnsclient.ResolveWithSyscall(hostnameAscii)
+			data, err = d.dnsclient.ResolveWithSyscall(hostname)
 		}
 		if err != nil {
 			return nil, err

@@ -5,6 +5,7 @@ import (
 
 	"github.com/ulule/deepcopier"
 	ztls "github.com/zmap/zcrypto/tls"
+	"golang.org/x/net/idna"
 )
 
 func AsTLSConfig(ztlsConfig *ztls.Config) (*tls.Config, error) {
@@ -28,4 +29,9 @@ func IsTLS13(config interface{}) bool {
 	}
 
 	return false
+}
+
+func asAscii(hostname string) string {
+	hostnameAscii, _ := idna.ToASCII(hostname)
+	return hostnameAscii
 }
