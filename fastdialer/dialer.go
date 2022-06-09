@@ -6,6 +6,7 @@ import (
 	"crypto/tls"
 	"encoding/json"
 	"fmt"
+	"log"
 	"net"
 	"strings"
 
@@ -104,10 +105,10 @@ func (d *Dialer) Dial(ctx context.Context, network, address string) (conn net.Co
 // DialTLS with encrypted connection
 func (d *Dialer) DialTLS(ctx context.Context, network, address string) (conn net.Conn, err error) {
 	if d.options.WithZTLS {
-		return d.DialZTLSWithConfig(ctx, network, address, &ztls.Config{InsecureSkipVerify: true})
+		return d.DialZTLSWithConfig(ctx, network, address, &ztls.Config{InsecureSkipVerify: true, MinVersion: tls.VersionTLS10})
 	}
 
-	return d.DialTLSWithConfig(ctx, network, address, &tls.Config{InsecureSkipVerify: true})
+	return d.DialTLSWithConfig(ctx, network, address, &tls.Config{InsecureSkipVerify: true, MinVersion: tls.VersionTLS10})
 }
 
 // DialZTLS with encrypted connection using ztls
@@ -202,7 +203,9 @@ func (d *Dialer) dial(ctx context.Context, network, address string, shouldUseTLS
 		}
 		hostPort := net.JoinHostPort(ip, port)
 		if shouldUseTLS {
+			log.Println(tlsconfig.MinVersion)
 			tlsconfigCopy := tlsconfig.Clone()
+			log.Println(tlsconfigCopy.MinVersion)
 			switch {
 			case d.options.SNIName != "":
 				tlsconfigCopy.ServerName = d.options.SNIName
