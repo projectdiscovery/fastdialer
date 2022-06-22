@@ -53,6 +53,7 @@ func testDialer(t *testing.T, options Options) {
 	fd.Close()
 }
 
+// nolint
 func testDialerIpv6(t *testing.T, options Options) {
 	// disk based
 	fd, err := NewDialer(options)
