@@ -47,6 +47,7 @@ type Options struct {
 	Dialer              *net.Dialer
 	WithZTLS            bool
 	SNIName             string
+	OnDialCallback      func(hostname, IP string)
 }
 
 // DefaultOptions of the cache
