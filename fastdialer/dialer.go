@@ -235,6 +235,9 @@ func (d *Dialer) dial(ctx context.Context, network, address string, shouldUseTLS
 					return nil, setErr
 				}
 			}
+			if d.options.OnDialCallback != nil {
+				d.options.OnDialCallback(hostname, ip)
+			}
 			if d.options.WithTLSData && shouldUseTLS {
 				if connTLS, ok := conn.(*tls.Conn); ok {
 					var data bytes.Buffer
