@@ -15,7 +15,7 @@ require (
 	github.com/projectdiscovery/networkpolicy v0.0.1
 	github.com/projectdiscovery/retryabledns v1.0.13-0.20210916165024-76c5b76fd59a
 	github.com/rogpeppe/go-internal v1.8.0 // indirect
-	github.com/stretchr/testify v1.7.4
+	github.com/stretchr/testify v1.8.0
 	github.com/ulule/deepcopier v0.0.0-20200430083143-45decc6639b6
 	github.com/zmap/zcrypto v0.0.0-20211005224000-2d0ffdec8a9b
 	go.etcd.io/bbolt v1.3.6 // indirect
