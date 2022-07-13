@@ -370,8 +370,10 @@ func (d *Dialer) GetDNSData(hostname string) (*retryabledns.DNSData, error) {
 		if data == nil {
 			return nil, ResolveHostError
 		}
-		b, _ := data.Marshal()
-		err = d.hm.Set(hostname, b)
+		if len(data.A)+len(data.AAAA) > 0 {
+			b, _ := data.Marshal()
+			err = d.hm.Set(hostname, b)
+		}
 		if err != nil {
 			return nil, err
 		}
