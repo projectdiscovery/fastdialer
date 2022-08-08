@@ -79,7 +79,10 @@ func NewDialer(options Options) (*Dialer, error) {
 		// nolint:errcheck // if they cannot be loaded it's not a hard failure
 		loadHostsFile(hm)
 	}
-	dnsclient := retryabledns.New(resolvers, options.MaxRetries)
+	dnsclient, err := retryabledns.New(resolvers, options.MaxRetries)
+	if err != nil {
+		return nil, err
+	}
 
 	var npOptions networkpolicy.Options
 	// Populate deny list if necessary
