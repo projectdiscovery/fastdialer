@@ -79,7 +79,10 @@ func NewDialer(options Options) (*Dialer, error) {
 		// nolint:errcheck // if they cannot be loaded it's not a hard failure
 		loadHostsFile(hm)
 	}
-	dnsclient := retryabledns.New(resolvers, options.MaxRetries)
+	dnsclient, err := retryabledns.New(resolvers, options.MaxRetries)
+	if err != nil {
+		return nil, err
+	}
 
 	var npOptions networkpolicy.Options
 	// Populate deny list if necessary
@@ -235,6 +238,9 @@ func (d *Dialer) dial(ctx context.Context, network, address string, shouldUseTLS
 					return nil, setErr
 				}
 			}
+			if d.options.OnDialCallback != nil {
+				d.options.OnDialCallback(hostname, ip)
+			}
 			if d.options.WithTLSData && shouldUseTLS {
 				if connTLS, ok := conn.(*tls.Conn); ok {
 					var data bytes.Buffer
@@ -367,8 +373,10 @@ func (d *Dialer) GetDNSData(hostname string) (*retryabledns.DNSData, error) {
 		if data == nil {
 			return nil, ResolveHostError
 		}
-		b, _ := data.Marshal()
-		err = d.hm.Set(hostname, b)
+		if len(data.A)+len(data.AAAA) > 0 {
+			b, _ := data.Marshal()
+			err = d.hm.Set(hostname, b)
+		}
 		if err != nil {
 			return nil, err
 		}
