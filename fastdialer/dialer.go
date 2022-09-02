@@ -15,6 +15,7 @@ import (
 	"github.com/projectdiscovery/networkpolicy"
 	retryabledns "github.com/projectdiscovery/retryabledns"
 	ztls "github.com/zmap/zcrypto/tls"
+	"golang.org/x/net/proxy"
 )
 
 // Dialer structure containing data information
@@ -25,6 +26,7 @@ type Dialer struct {
 	dialerHistory *hybrid.HybridMap
 	dialerTLSData *hybrid.HybridMap
 	dialer        *net.Dialer
+	proxyDialer   *proxy.Dialer
 	networkpolicy *networkpolicy.NetworkPolicy
 }
 
@@ -95,7 +97,7 @@ func NewDialer(options Options) (*Dialer, error) {
 		return nil, err
 	}
 
-	return &Dialer{dnsclient: dnsclient, hm: hm, dialerHistory: dialerHistory, dialerTLSData: dialerTLSData, dialer: dialer, options: &options, networkpolicy: np}, nil
+	return &Dialer{dnsclient: dnsclient, hm: hm, dialerHistory: dialerHistory, dialerTLSData: dialerTLSData, dialer: dialer, proxyDialer: options.ProxyDialer, options: &options, networkpolicy: np}, nil
 }
 
 // Dial function compatible with net/http
@@ -229,7 +231,12 @@ func (d *Dialer) dial(ctx context.Context, network, address string, shouldUseTLS
 			}
 			conn, err = ztls.DialWithDialer(d.dialer, network, hostPort, ztlsconfigCopy)
 		} else {
-			conn, err = d.dialer.DialContext(ctx, network, hostPort)
+			if d.proxyDialer != nil {
+				dialer := *d.proxyDialer
+				conn, err = dialer.Dial(network, hostPort)
+			} else {
+				conn, err = d.dialer.DialContext(ctx, network, hostPort)
+			}
 		}
 		if err == nil {
 			if d.options.WithDialerHistory && d.dialerHistory != nil {
