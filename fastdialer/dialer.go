@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"net"
 	"strings"
+	"time"
 
 	"github.com/projectdiscovery/cryptoutil"
 	"github.com/projectdiscovery/hmap/store/hybrid"
@@ -233,7 +234,24 @@ func (d *Dialer) dial(ctx context.Context, network, address string, shouldUseTLS
 		} else {
 			if d.proxyDialer != nil {
 				dialer := *d.proxyDialer
-				conn, err = dialer.Dial(network, hostPort)
+				// timeout not working for socks5 proxy dialer
+				// tying to handle it here
+				connectionCh := make(chan net.Conn, 1)
+				errCh := make(chan error, 1)
+				go func() {
+					conn, err = dialer.Dial(network, hostPort)
+					if err != nil {
+						errCh <- err
+						return
+					}
+					connectionCh <- conn
+				}()
+				select {
+				case <-time.After(d.options.DialerTimeout):
+					return nil, fmt.Errorf("timeout after %v", d.options.DialerTimeout)
+				case conn = <-connectionCh:
+				case err = <-errCh:
+				}
 			} else {
 				conn, err = d.dialer.DialContext(ctx, network, hostPort)
 			}
