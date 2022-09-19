@@ -246,8 +246,11 @@ func (d *Dialer) dial(ctx context.Context, network, address string, shouldUseTLS
 					}
 					connectionCh <- conn
 				}()
+				// using timer as time.After is not recovered gy GC
+				dialerTime := time.NewTimer(d.options.DialerTimeout)
+				defer dialerTime.Stop()
 				select {
-				case <-time.After(d.options.DialerTimeout):
+				case <-dialerTime.C:
 					return nil, fmt.Errorf("timeout after %v", d.options.DialerTimeout)
 				case conn = <-connectionCh:
 				case err = <-errCh:
