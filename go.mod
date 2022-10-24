@@ -12,7 +12,7 @@ require (
 	github.com/projectdiscovery/hmap v0.0.2-0.20210917080408-0fd7bd286bfa
 	github.com/projectdiscovery/iputil v0.0.0-20220712175312-b9406f31cdd8
 	github.com/projectdiscovery/networkpolicy v0.0.1
-	github.com/projectdiscovery/retryabledns v1.0.15
+	github.com/projectdiscovery/retryabledns v1.0.16
 	github.com/rogpeppe/go-internal v1.8.0 // indirect
 	github.com/stretchr/testify v1.8.0
 	github.com/ulule/deepcopier v0.0.0-20200430083143-45decc6639b6
