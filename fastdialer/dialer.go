@@ -10,11 +10,11 @@ import (
 	"strings"
 	"time"
 
-	"github.com/projectdiscovery/cryptoutil"
 	"github.com/projectdiscovery/hmap/store/hybrid"
-	"github.com/projectdiscovery/iputil"
 	"github.com/projectdiscovery/networkpolicy"
 	retryabledns "github.com/projectdiscovery/retryabledns"
+	cryptoutil "github.com/projectdiscovery/utils/crypto"
+	iputil "github.com/projectdiscovery/utils/ip"
 	ztls "github.com/zmap/zcrypto/tls"
 	"golang.org/x/net/proxy"
 )
