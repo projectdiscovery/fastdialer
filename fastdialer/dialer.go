@@ -196,8 +196,9 @@ func (d *Dialer) dial(ctx context.Context, network, address string, shouldUseTLS
 	// use fixed ip as first
 	if fixedIP != "" {
 		IPS = append(IPS, fixedIP)
+	} else {
+		IPS = append(IPS, append(data.A, data.AAAA...)...)
 	}
-	IPS = append(IPS, append(data.A, data.AAAA...)...)
 
 	// Dial to the IPs finally.
 	for _, ip := range IPS {
