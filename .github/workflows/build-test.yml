@@ -8,7 +8,10 @@ on:
 jobs:  
   build:
     name: Test Builds
-    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest, macOS-latest]
+    runs-on: ${{ matrix.os }}
     steps:
       - name: Set up Go
         uses: actions/setup-go@v3
@@ -20,7 +23,6 @@ jobs:
 
       - name: Test
         run: go test ./...
-
-      # Todo: create example folder
-      # - name: Build
-      #   run: go build .
+  
+      - name: Build
+        run: go build example/main.go
