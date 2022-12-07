@@ -103,7 +103,7 @@ func NewDialer(options Options) (*Dialer, error) {
 
 // Dial function compatible with net/http
 func (d *Dialer) Dial(ctx context.Context, network, address string) (conn net.Conn, err error) {
-	conn, err = d.dial(ctx, network, address, true, true, nil, nil)
+	conn, err = d.dial(ctx, network, address, false, false, nil, nil)
 	return
 }
 
