@@ -103,7 +103,7 @@ func NewDialer(options Options) (*Dialer, error) {
 
 // Dial function compatible with net/http
 func (d *Dialer) Dial(ctx context.Context, network, address string) (conn net.Conn, err error) {
-	conn, err = d.dial(ctx, network, address, false, false, nil, nil)
+	conn, err = d.dial(ctx, network, address, true, true, nil, nil)
 	return
 }
 
@@ -124,7 +124,7 @@ func (d *Dialer) DialZTLS(ctx context.Context, network, address string) (conn ne
 
 // DialTLS with encrypted connection
 func (d *Dialer) DialTLSWithConfig(ctx context.Context, network, address string, config *tls.Config) (conn net.Conn, err error) {
-	conn, err = d.dial(ctx, network, address, true, false, config, nil)
+	conn, err = d.dial(ctx, network, address, true, true, config, nil)
 	return
 }
 
@@ -222,6 +222,9 @@ func (d *Dialer) dial(ctx context.Context, network, address string, shouldUseTLS
 			conn, err = tls.DialWithDialer(d.dialer, network, hostPort, tlsconfigCopy)
 		} else if shouldUseZTLS {
 			ztlsconfigCopy := ztlsconfig.Clone()
+			ztlsconfigCopy.CipherSuites = ztls.ChromeCiphers
+			ztlsconfigCopy.MinVersion = ztls.VersionSSL30
+			ztlsconfigCopy.MaxVersion = ztls.VersionTLS12
 			switch {
 			case d.options.SNIName != "":
 				ztlsconfigCopy.ServerName = d.options.SNIName
