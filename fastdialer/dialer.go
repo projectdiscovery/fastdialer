@@ -124,7 +124,7 @@ func (d *Dialer) DialZTLS(ctx context.Context, network, address string) (conn ne
 
 // DialTLS with encrypted connection
 func (d *Dialer) DialTLSWithConfig(ctx context.Context, network, address string, config *tls.Config) (conn net.Conn, err error) {
-	conn, err = d.dial(ctx, network, address, true, true, config, nil)
+	conn, err = d.dial(ctx, network, address, true, false, config, nil)
 	return
 }
 
