@@ -7,7 +7,7 @@ require (
 	github.com/pkg/errors v0.9.1
 	github.com/projectdiscovery/hmap v0.0.2-0.20210917080408-0fd7bd286bfa
 	github.com/projectdiscovery/networkpolicy v0.0.3
-	github.com/projectdiscovery/retryabledns v1.0.19
+	github.com/projectdiscovery/retryabledns v1.0.20
 	github.com/projectdiscovery/utils v0.0.4-0.20221201124851-f8524345b6d3
 	github.com/stretchr/testify v1.8.1
 	github.com/ulule/deepcopier v0.0.0-20200430083143-45decc6639b6
@@ -27,7 +27,7 @@ require (
 	github.com/miekg/dns v1.1.50 // indirect
 	github.com/pmezard/go-difflib v1.0.0 // indirect
 	github.com/projectdiscovery/iputil v0.0.2 // indirect
-	github.com/projectdiscovery/retryablehttp-go v1.0.7 // indirect
+	github.com/projectdiscovery/retryablehttp-go v1.0.8 // indirect
 	github.com/projectdiscovery/stringsutil v0.0.2 // indirect
 	github.com/rogpeppe/go-internal v1.9.0 // indirect
 	github.com/saintfish/chardet v0.0.0-20120816061221-3af4cd4741ca // indirect
