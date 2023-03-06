@@ -8,11 +8,11 @@ require (
 	github.com/projectdiscovery/hmap v0.0.2-0.20210917080408-0fd7bd286bfa
 	github.com/projectdiscovery/networkpolicy v0.0.4
 	github.com/projectdiscovery/retryabledns v1.0.21
-	github.com/projectdiscovery/utils v0.0.4-0.20230117135930-7371ae6a739d
+	github.com/projectdiscovery/utils v0.0.14
 	github.com/stretchr/testify v1.8.1
 	github.com/ulule/deepcopier v0.0.0-20200430083143-45decc6639b6
 	github.com/zmap/zcrypto v0.0.0-20220803033029-557f3e4940be
-	golang.org/x/net v0.6.0
+	golang.org/x/net v0.7.0
 )
 
 require (
