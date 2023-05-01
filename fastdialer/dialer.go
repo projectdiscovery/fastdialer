@@ -21,6 +21,7 @@ import (
 )
 
 func init() {
+	// enable permissive parsing for ztls, so that it can allow permissive parsing for X509 certificates
 	asn1.AllowPermissiveParsing = true
 }
 
