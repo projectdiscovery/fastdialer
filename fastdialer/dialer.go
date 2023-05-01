@@ -15,9 +15,14 @@ import (
 	retryabledns "github.com/projectdiscovery/retryabledns"
 	cryptoutil "github.com/projectdiscovery/utils/crypto"
 	iputil "github.com/projectdiscovery/utils/ip"
+	"github.com/zmap/zcrypto/encoding/asn1"
 	ztls "github.com/zmap/zcrypto/tls"
 	"golang.org/x/net/proxy"
 )
+
+func init() {
+	asn1.AllowPermissiveParsing = true
+}
 
 // Dialer structure containing data information
 type Dialer struct {
