@@ -15,9 +15,15 @@ import (
 	retryabledns "github.com/projectdiscovery/retryabledns"
 	cryptoutil "github.com/projectdiscovery/utils/crypto"
 	iputil "github.com/projectdiscovery/utils/ip"
+	"github.com/zmap/zcrypto/encoding/asn1"
 	ztls "github.com/zmap/zcrypto/tls"
 	"golang.org/x/net/proxy"
 )
+
+func init() {
+	// enable permissive parsing for ztls, so that it can allow permissive parsing for X509 certificates
+	asn1.AllowPermissiveParsing = true
+}
 
 // Dialer structure containing data information
 type Dialer struct {
