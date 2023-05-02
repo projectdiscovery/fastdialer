@@ -6,7 +6,7 @@ require (
 	github.com/dimchansky/utfbom v1.1.1
 	github.com/pkg/errors v0.9.1
 	github.com/projectdiscovery/hmap v0.0.11
-	github.com/projectdiscovery/networkpolicy v0.0.5
+	github.com/projectdiscovery/networkpolicy v0.0.6
 	github.com/projectdiscovery/retryabledns v1.0.21
 	github.com/projectdiscovery/utils v0.0.26
 	github.com/stretchr/testify v1.8.2
