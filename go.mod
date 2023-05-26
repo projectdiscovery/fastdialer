@@ -9,7 +9,7 @@ require (
 	github.com/projectdiscovery/networkpolicy v0.0.6
 	github.com/projectdiscovery/retryabledns v1.0.26
 	github.com/projectdiscovery/utils v0.0.32
-	github.com/stretchr/testify v1.8.2
+	github.com/stretchr/testify v1.8.3
 	github.com/ulule/deepcopier v0.0.0-20200430083143-45decc6639b6
 	github.com/zmap/zcrypto v0.0.0-20220803033029-557f3e4940be
 	golang.org/x/net v0.10.0
