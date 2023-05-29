@@ -10,11 +10,14 @@ import (
 	"strings"
 	"time"
 
+	"github.com/projectdiscovery/fastdialer/fastdialer/ja3/impersonate"
 	"github.com/projectdiscovery/hmap/store/hybrid"
 	"github.com/projectdiscovery/networkpolicy"
 	retryabledns "github.com/projectdiscovery/retryabledns"
 	cryptoutil "github.com/projectdiscovery/utils/crypto"
 	iputil "github.com/projectdiscovery/utils/ip"
+	ptrutil "github.com/projectdiscovery/utils/ptr"
+	utls "github.com/refraction-networking/utls"
 	"github.com/zmap/zcrypto/encoding/asn1"
 	ztls "github.com/zmap/zcrypto/tls"
 	"golang.org/x/net/proxy"
@@ -109,7 +112,7 @@ func NewDialer(options Options) (*Dialer, error) {
 
 // Dial function compatible with net/http
 func (d *Dialer) Dial(ctx context.Context, network, address string) (conn net.Conn, err error) {
-	conn, err = d.dial(ctx, network, address, false, false, nil, nil)
+	conn, err = d.dial(ctx, network, address, false, false, nil, nil, impersonate.None, nil)
 	return
 }
 
@@ -130,7 +133,12 @@ func (d *Dialer) DialZTLS(ctx context.Context, network, address string) (conn ne
 
 // DialTLS with encrypted connection
 func (d *Dialer) DialTLSWithConfig(ctx context.Context, network, address string, config *tls.Config) (conn net.Conn, err error) {
-	conn, err = d.dial(ctx, network, address, true, false, config, nil)
+	conn, err = d.dial(ctx, network, address, true, false, config, nil, impersonate.None, nil)
+	return
+}
+
+func (d *Dialer) DialTLSWithConfigImpersonate(ctx context.Context, network, address string, config *tls.Config, impersonate impersonate.Strategy, identity *impersonate.Identity) (conn net.Conn, err error) {
+	conn, err = d.dial(ctx, network, address, true, false, config, nil, impersonate, identity)
 	return
 }
 
@@ -141,12 +149,12 @@ func (d *Dialer) DialZTLSWithConfig(ctx context.Context, network, address string
 		if err != nil {
 			return nil, err
 		}
-		return d.dial(ctx, network, address, true, false, stdTLSConfig, nil)
+		return d.dial(ctx, network, address, true, false, stdTLSConfig, nil, impersonate.None, nil)
 	}
-	return d.dial(ctx, network, address, false, true, nil, config)
+	return d.dial(ctx, network, address, false, true, nil, config, impersonate.None, nil)
 }
 
-func (d *Dialer) dial(ctx context.Context, network, address string, shouldUseTLS, shouldUseZTLS bool, tlsconfig *tls.Config, ztlsconfig *ztls.Config) (conn net.Conn, err error) {
+func (d *Dialer) dial(ctx context.Context, network, address string, shouldUseTLS, shouldUseZTLS bool, tlsconfig *tls.Config, ztlsconfig *ztls.Config, impersonateStrategy impersonate.Strategy, impersonateIdentity *impersonate.Identity) (conn net.Conn, err error) {
 	var hostname, port, fixedIP string
 
 	if strings.HasPrefix(address, "[") {
@@ -225,7 +233,36 @@ func (d *Dialer) dial(ctx context.Context, network, address string, shouldUseTLS
 			case !iputil.IsIP(hostname):
 				tlsconfigCopy.ServerName = hostname
 			}
-			conn, err = tls.DialWithDialer(d.dialer, network, hostPort, tlsconfigCopy)
+			if impersonateStrategy == impersonate.None {
+				conn, err = tls.DialWithDialer(d.dialer, network, hostPort, tlsconfigCopy)
+			} else {
+				conn, err := d.dialer.DialContext(ctx, network, hostPort)
+				if err != nil {
+					return conn, err
+				}
+				// clone existing tls config
+				uTLSConfig := &utls.Config{
+					InsecureSkipVerify: tlsconfigCopy.InsecureSkipVerify,
+					ServerName:         tlsconfigCopy.ServerName,
+					MinVersion:         tlsconfigCopy.MinVersion,
+					MaxVersion:         tlsconfigCopy.MaxVersion,
+					CipherSuites:       tlsconfigCopy.CipherSuites,
+				}
+				var uTLSConn *utls.UConn
+				if impersonateStrategy == impersonate.Random {
+					uTLSConn = utls.UClient(conn, uTLSConfig, utls.HelloRandomized)
+				} else {
+					uTLSConn = utls.UClient(conn, uTLSConfig, utls.HelloCustom)
+					clientHelloSpec := utls.ClientHelloSpec(ptrutil.Safe(impersonateIdentity))
+					if err := uTLSConn.ApplyPreset(&clientHelloSpec); err != nil {
+						return nil, err
+					}
+				}
+				if err := uTLSConn.Handshake(); err != nil {
+					return nil, err
+				}
+				return uTLSConn, nil
+			}
 		} else if shouldUseZTLS {
 			ztlsconfigCopy := ztlsconfig.Clone()
 			switch {

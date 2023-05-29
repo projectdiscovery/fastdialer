@@ -2,21 +2,20 @@ package main
 
 import (
 	"context"
-	"fmt"
+	"crypto/tls"
 	"log"
 
 	"github.com/projectdiscovery/fastdialer/fastdialer"
+	"github.com/projectdiscovery/fastdialer/fastdialer/ja3/impersonate"
 )
 
 func main() {
-
-	// refer fastdialer/options.go for options and customization
 	options := fastdialer.DefaultOptions
 
 	// Create new dialer using NewDialer(opts fastdialer.options)
 	fd, err := fastdialer.NewDialer(fastdialer.DefaultOptions)
 	if err != nil {
-		panic(err)
+		log.Fatal(err)
 	}
 
 	// Configure Cache if required
@@ -26,19 +25,17 @@ func main() {
 
 	ctx := context.Background()
 
-	// To dial and create connection use
-	// To create connection over TLS or older versions use
-	// fd.DialTLS() or fd.DialZTLS()
-	conn, err := fd.Dial(ctx, "tcp", "www.projectdiscovery.io:80")
+	target := "www.projectdiscovery.io"
+
+	conn, err := fd.DialTLSWithConfigImpersonate(ctx, "tcp", target+":443", &tls.Config{InsecureSkipVerify: true}, impersonate.Random, nil)
 	if err != nil || conn == nil {
 		log.Fatalf("couldn't connect to target: %s", err)
-	} else {
-		fmt.Println("Connected: TCP stream created with www.projectdiscovery.io:80")
 	}
-	conn.Close()
+	defer conn.Close()
+	log.Println("connected to the target")
 
 	// To look up Host/ Get DNS details use
-	data, err := fd.GetDNSData("www.projectdiscovery.io")
+	data, err := fd.GetDNSData(target)
 	if err != nil || data == nil {
 		log.Fatalf("couldn't retrieve dns data: %s", err)
 	}
@@ -48,6 +45,5 @@ func main() {
 	if err != nil {
 		log.Fatalf("failed to marshal json: %s", err)
 	}
-	fmt.Println(jsonData)
-
+	log.Println(jsonData)
 }
