@@ -5,7 +5,7 @@ go 1.18
 require (
 	github.com/dimchansky/utfbom v1.1.1
 	github.com/pkg/errors v0.9.1
-	github.com/projectdiscovery/hmap v0.0.11
+	github.com/projectdiscovery/hmap v0.0.12
 	github.com/projectdiscovery/networkpolicy v0.0.6
 	github.com/projectdiscovery/retryabledns v1.0.26
 	github.com/projectdiscovery/utils v0.0.32
@@ -29,11 +29,10 @@ require (
 	github.com/pmezard/go-difflib v1.0.0 // indirect
 	github.com/projectdiscovery/blackrock v0.0.1 // indirect
 	github.com/projectdiscovery/retryablehttp-go v1.0.16 // indirect
-	github.com/rogpeppe/go-internal v1.9.0 // indirect
 	github.com/saintfish/chardet v0.0.0-20120816061221-3af4cd4741ca // indirect
 	github.com/syndtr/goleveldb v1.0.0 // indirect
 	github.com/tidwall/btree v1.4.3 // indirect
-	github.com/tidwall/buntdb v1.2.10 // indirect
+	github.com/tidwall/buntdb v1.3.0 // indirect
 	github.com/tidwall/gjson v1.14.3 // indirect
 	github.com/tidwall/grect v0.1.4 // indirect
 	github.com/tidwall/match v1.1.1 // indirect
