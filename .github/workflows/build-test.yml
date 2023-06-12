@@ -22,7 +22,7 @@ jobs:
       - name: Test
         run: go test ./...
   
-      - name: Build Examples
+      - name: Testing Examples
         run: |
-          go build example/simple/main.go
-          go build example/impersonate/main.go
+          go run . -race example/simple/main.go
+          go run . -race example/impersonate/main.go
