@@ -12,10 +12,8 @@ const (
 	None Strategy = iota
 	// Random is the strategy which use a random client hello spec
 	Random
-	// JA3 is the strategy which parses a client hello spec from ja3 full string
-	JA3
-	// Raw is the strategy which parses a client hello spec from raw bytes
-	Raw
+	// JA3 or Raw is the strategy which parses a client hello spec from ja3 full string
+	Custom
 )
 
 // Identity contains the structured client hello spec

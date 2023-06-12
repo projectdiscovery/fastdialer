@@ -251,7 +251,7 @@ func (d *Dialer) dial(ctx context.Context, network, address string, shouldUseTLS
 				var uTLSConn *utls.UConn
 				if impersonateStrategy == impersonate.Random {
 					uTLSConn = utls.UClient(conn, uTLSConfig, utls.HelloRandomized)
-				} else {
+				} else if impersonateStrategy == impersonate.Custom {
 					uTLSConn = utls.UClient(conn, uTLSConfig, utls.HelloCustom)
 					clientHelloSpec := utls.ClientHelloSpec(ptrutil.Safe(impersonateIdentity))
 					if err := uTLSConn.ApplyPreset(&clientHelloSpec); err != nil {
