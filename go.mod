@@ -9,20 +9,25 @@ require (
 	github.com/projectdiscovery/networkpolicy v0.0.6
 	github.com/projectdiscovery/retryabledns v1.0.29
 	github.com/projectdiscovery/utils v0.0.37
+	github.com/refraction-networking/utls v1.3.2
 	github.com/stretchr/testify v1.8.4
 	github.com/ulule/deepcopier v0.0.0-20200430083143-45decc6639b6
 	github.com/zmap/zcrypto v0.0.0-20220803033029-557f3e4940be
+	golang.org/x/exp v0.0.0-20221019170559-20944726eadf
 	golang.org/x/net v0.10.0
 )
 
 require (
 	github.com/Mzack9999/go-http-digest-auth-client v0.6.1-0.20220414142836-eb8883508809 // indirect
 	github.com/akrylysov/pogreb v0.10.1 // indirect
+	github.com/andybalholm/brotli v1.0.4 // indirect
 	github.com/asaskevich/govalidator v0.0.0-20210307081110-f21760c49a8d // indirect
 	github.com/aymerick/douceur v0.2.0 // indirect
 	github.com/davecgh/go-spew v1.1.1 // indirect
+	github.com/gaukas/godicttls v0.0.3 // indirect
 	github.com/golang/snappy v0.0.4 // indirect
 	github.com/gorilla/css v1.0.0 // indirect
+	github.com/klauspost/compress v1.15.15 // indirect
 	github.com/microcosm-cc/bluemonday v1.0.24 // indirect
 	github.com/miekg/dns v1.1.54 // indirect
 	github.com/nxadm/tail v1.4.8 // indirect
