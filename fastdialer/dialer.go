@@ -236,9 +236,9 @@ func (d *Dialer) dial(ctx context.Context, network, address string, shouldUseTLS
 			if impersonateStrategy == impersonate.None {
 				conn, err = tls.DialWithDialer(d.dialer, network, hostPort, tlsconfigCopy)
 			} else {
-				conn, err := d.dialer.DialContext(ctx, network, hostPort)
+				nativeConn, err := d.dialer.DialContext(ctx, network, hostPort)
 				if err != nil {
-					return conn, err
+					return nativeConn, err
 				}
 				// clone existing tls config
 				uTLSConfig := &utls.Config{
@@ -250,9 +250,9 @@ func (d *Dialer) dial(ctx context.Context, network, address string, shouldUseTLS
 				}
 				var uTLSConn *utls.UConn
 				if impersonateStrategy == impersonate.Random {
-					uTLSConn = utls.UClient(conn, uTLSConfig, utls.HelloRandomized)
+					uTLSConn = utls.UClient(nativeConn, uTLSConfig, utls.HelloRandomized)
 				} else if impersonateStrategy == impersonate.Custom {
-					uTLSConn = utls.UClient(conn, uTLSConfig, utls.HelloCustom)
+					uTLSConn = utls.UClient(nativeConn, uTLSConfig, utls.HelloCustom)
 					clientHelloSpec := utls.ClientHelloSpec(ptrutil.Safe(impersonateIdentity))
 					if err := uTLSConn.ApplyPreset(&clientHelloSpec); err != nil {
 						return nil, err
@@ -261,7 +261,7 @@ func (d *Dialer) dial(ctx context.Context, network, address string, shouldUseTLS
 				if err := uTLSConn.Handshake(); err != nil {
 					return nil, err
 				}
-				return uTLSConn, nil
+				conn = uTLSConn
 			}
 		} else if shouldUseZTLS {
 			ztlsconfigCopy := ztlsconfig.Clone()
