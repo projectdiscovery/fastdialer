@@ -180,7 +180,7 @@ func (d *Dialer) dial(ctx context.Context, network, address string, shouldUseTLS
 				fixedIP = addressParts[2]
 			}
 			// check if the ip is within the context
-			if ctxIP := ctx.Value("ip"); ctxIP != nil {
+			if ctxIP := ctx.Value(IP); ctxIP != nil {
 				fixedIP = fmt.Sprint(ctxIP)
 			}
 		} else {
