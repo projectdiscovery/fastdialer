@@ -5,8 +5,10 @@ import (
 	"context"
 	"crypto/tls"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net"
+	"os"
 	"strings"
 	"time"
 
@@ -15,6 +17,7 @@ import (
 	"github.com/projectdiscovery/networkpolicy"
 	retryabledns "github.com/projectdiscovery/retryabledns"
 	cryptoutil "github.com/projectdiscovery/utils/crypto"
+	errorutil "github.com/projectdiscovery/utils/errors"
 	iputil "github.com/projectdiscovery/utils/ip"
 	ptrutil "github.com/projectdiscovery/utils/ptr"
 	utls "github.com/refraction-networking/utls"
@@ -23,9 +26,17 @@ import (
 	"golang.org/x/net/proxy"
 )
 
+// option to disable ztls fallback in case of handshake error
+// reads from env variable DISABLE_ZTLS_FALLBACK
+var disableZTLSFallback = false
+
 func init() {
 	// enable permissive parsing for ztls, so that it can allow permissive parsing for X509 certificates
 	asn1.AllowPermissiveParsing = true
+	value := os.Getenv("DISABLE_ZTLS_FALLBACK")
+	if strings.EqualFold(value, "true") {
+		disableZTLSFallback = true
+	}
 }
 
 // Dialer structure containing data information
@@ -121,8 +132,7 @@ func (d *Dialer) DialTLS(ctx context.Context, network, address string) (conn net
 	if d.options.WithZTLS {
 		return d.DialZTLSWithConfig(ctx, network, address, &ztls.Config{InsecureSkipVerify: true, MinVersion: tls.VersionTLS10})
 	}
-
-	return d.DialTLSWithConfig(ctx, network, address, &tls.Config{InsecureSkipVerify: true, MinVersion: tls.VersionTLS10})
+	return d.DialTLSWithConfig(ctx, network, address, &tls.Config{Renegotiation: tls.RenegotiateOnceAsClient, InsecureSkipVerify: true, MinVersion: tls.VersionTLS10})
 }
 
 // DialZTLS with encrypted connection using ztls
@@ -137,11 +147,13 @@ func (d *Dialer) DialTLSWithConfig(ctx context.Context, network, address string,
 	return
 }
 
+// DialTLSWithConfigImpersonate dials tls with impersonation
 func (d *Dialer) DialTLSWithConfigImpersonate(ctx context.Context, network, address string, config *tls.Config, impersonate impersonate.Strategy, identity *impersonate.Identity) (conn net.Conn, err error) {
 	conn, err = d.dial(ctx, network, address, true, false, config, nil, impersonate, identity)
 	return
 }
 
+// DialZTLSWithConfig dials ztls with config
 func (d *Dialer) DialZTLSWithConfig(ctx context.Context, network, address string, config *ztls.Config) (conn net.Conn, err error) {
 	// ztls doesn't support tls13
 	if IsTLS13(config) {
@@ -302,6 +314,29 @@ func (d *Dialer) dial(ctx context.Context, network, address string, shouldUseTLS
 			} else {
 				conn, err = d.dialer.DialContext(ctx, network, hostPort)
 			}
+		}
+		// fallback to ztls  in case of handshake error with chrome ciphers
+		// ztls fallback can either be disabled by setting env variable DISABLE_ZTLS_FALLBACK=true or by setting DisableZtlsFallback=true in options
+		if err != nil && !errors.Is(err, os.ErrDeadlineExceeded) && !(d.options.DisableZtlsFallback && disableZTLSFallback) {
+			var ztlsconfigCopy *ztls.Config
+			if shouldUseZTLS {
+				ztlsconfigCopy = ztlsconfig.Clone()
+			} else {
+				if tlsconfig == nil {
+					tlsconfig = &tls.Config{
+						Renegotiation:      tls.RenegotiateOnceAsClient,
+						MinVersion:         tls.VersionTLS10,
+						InsecureSkipVerify: true,
+					}
+				}
+				ztlsconfigCopy, err = AsZTLSConfig(tlsconfig)
+				if err != nil {
+					return nil, errorutil.NewWithErr(err).Msgf("could not convert tls config to ztls config")
+				}
+			}
+			ztlsconfigCopy.CipherSuites = ztls.ChromeCiphers
+			conn, err = ztls.DialWithDialer(d.dialer, network, hostPort, ztlsconfigCopy)
+			err = errorutil.WrapfWithNil(err, "ztls fallback failed")
 		}
 		if err == nil {
 			if d.options.WithDialerHistory && d.dialerHistory != nil {
