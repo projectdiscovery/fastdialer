@@ -23,7 +23,7 @@ For more details and documentation refer [GoDoc](https://pkg.go.dev/github.com/p
 
 ### ZTLS Fallback
 
-fastdialer by default fallbacks to using zcrypto when there is an error in TLS handshake (insufficient security level etc ). This is done to support older TLS versions and ciphers. This can be disabled in fastdialer options or by using DISABLE_ZTLS_FALLBACK environment variable. when falling back to ztls, ChromeCiphers are used
+fastdialer by default fallbacks to using zcrypto when there is an error in TLS handshake (insufficient security level etc ). This is done to support older TLS versions and ciphers. This can be disabled in fastdialer options or by using `DISABLE_ZTLS_FALLBACK=true` environment variable. when falling back to ztls, ChromeCiphers are used
 
 # Example
 
