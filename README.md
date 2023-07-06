@@ -20,6 +20,11 @@ Fastdialer is implementation of `net.Dialer` with lot of features like DNS Cache
 
 For more details and documentation refer [GoDoc](https://pkg.go.dev/github.com/projectdiscovery/fastdialer/fastdialer).
 
+
+### ZTLS Fallback
+
+fastdialer by default fallbacks to using zcrypto when there is an error in TLS handshake (insufficient security level etc ). This is done to support older TLS versions and ciphers. This can be disabled in fastdialer options or by using DISABLE_ZTLS_FALLBACK environment variable. when falling back to ztls, ChromeCiphers are used
+
 # Example
 
 An Example showing usage of fastdialer as a library is specified [here](./example/main.go)
