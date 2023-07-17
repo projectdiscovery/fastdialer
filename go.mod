@@ -7,7 +7,7 @@ require (
 	github.com/pkg/errors v0.9.1
 	github.com/projectdiscovery/hmap v0.0.13
 	github.com/projectdiscovery/networkpolicy v0.0.6
-	github.com/projectdiscovery/retryabledns v1.0.30
+	github.com/projectdiscovery/retryabledns v1.0.31
 	github.com/projectdiscovery/utils v0.0.41
 	github.com/refraction-networking/utls v1.3.2
 	github.com/stretchr/testify v1.8.4
@@ -18,7 +18,6 @@ require (
 )
 
 require (
-	github.com/Mzack9999/go-http-digest-auth-client v0.6.1-0.20220414142836-eb8883508809 // indirect
 	github.com/akrylysov/pogreb v0.10.1 // indirect
 	github.com/andybalholm/brotli v1.0.4 // indirect
 	github.com/asaskevich/govalidator v0.0.0-20210307081110-f21760c49a8d // indirect
@@ -33,7 +32,6 @@ require (
 	github.com/nxadm/tail v1.4.8 // indirect
 	github.com/pmezard/go-difflib v1.0.0 // indirect
 	github.com/projectdiscovery/blackrock v0.0.1 // indirect
-	github.com/projectdiscovery/retryablehttp-go v1.0.17 // indirect
 	github.com/saintfish/chardet v0.0.0-20120816061221-3af4cd4741ca // indirect
 	github.com/syndtr/goleveldb v1.0.0 // indirect
 	github.com/tidwall/btree v1.4.3 // indirect
