@@ -36,7 +36,7 @@ var defaultExtensionMap = map[string]utls.TLSExtension{
 	},
 	"18": &utls.SCTExtension{},
 	"21": &utls.UtlsPaddingExtension{GetPaddingLen: utls.BoringPaddingStyle},
-	"23": &utls.UtlsExtendedMasterSecretExtension{},
+	"23": &utls.ExtendedMasterSecretExtension{},
 	"28": &utls.FakeRecordSizeLimitExtension{},
 	"35": &utls.SessionTicketExtension{},
 	"43": &utls.SupportedVersionsExtension{Versions: []uint16{
