@@ -7,7 +7,6 @@ import (
 	"strconv"
 	"strings"
 
-	tls "github.com/refraction-networking/utls"
 	utls "github.com/refraction-networking/utls"
 )
 
@@ -45,10 +44,10 @@ func ParseWithJa3(ja3 string) (*utls.ClientHelloSpec, error) {
 	}
 
 	extMap := getExtensionMap()
-	extMap["10"] = &tls.SupportedCurvesExtension{Curves: supportedCurves}
-	extMap["11"] = &tls.SupportedPointsExtension{SupportedPoints: supportedPoints}
+	extMap["10"] = &utls.SupportedCurvesExtension{Curves: supportedCurves}
+	extMap["11"] = &utls.SupportedPointsExtension{SupportedPoints: supportedPoints}
 
-	return &tls.ClientHelloSpec{
+	return &utls.ClientHelloSpec{
 		TLSVersMin:         vid,
 		TLSVersMax:         vid,
 		CipherSuites:       cipherSuites,
@@ -87,8 +86,8 @@ func parseCipherSuites(cipherToken string) ([]uint16, error) {
 	return cipherSuites, nil
 }
 
-func parseExtensions(extensionToken string) ([]tls.TLSExtension, error) {
-	var extensions []tls.TLSExtension
+func parseExtensions(extensionToken string) ([]utls.TLSExtension, error) {
+	var extensions []utls.TLSExtension
 	extensionToken = cleanup(extensionToken)
 	if extensionToken == "" {
 		return nil, errors.New("no extensions provided")
@@ -104,8 +103,8 @@ func parseExtensions(extensionToken string) ([]tls.TLSExtension, error) {
 	return extensions, nil
 }
 
-func parseSupportedCurves(supportedCurvesToken string) ([]tls.CurveID, error) {
-	var supportedCurves []tls.CurveID
+func parseSupportedCurves(supportedCurvesToken string) ([]utls.CurveID, error) {
+	var supportedCurves []utls.CurveID
 	supportedCurvesToken = cleanup(supportedCurvesToken)
 	if supportedCurvesToken == "" {
 		return supportedCurves, nil
@@ -116,7 +115,7 @@ func parseSupportedCurves(supportedCurvesToken string) ([]tls.CurveID, error) {
 		if err != nil {
 			return nil, err
 		}
-		supportedCurves = append(supportedCurves, tls.CurveID(cid))
+		supportedCurves = append(supportedCurves, utls.CurveID(cid))
 	}
 	return supportedCurves, nil
 }
