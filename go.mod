@@ -1,6 +1,6 @@
 module github.com/projectdiscovery/fastdialer
 
-go 1.18
+go 1.20
 
 require (
 	github.com/dimchansky/utfbom v1.1.1
