@@ -8,7 +8,7 @@ require (
 	github.com/projectdiscovery/hmap v0.0.16
 	github.com/projectdiscovery/networkpolicy v0.0.6
 	github.com/projectdiscovery/retryabledns v1.0.35
-	github.com/projectdiscovery/utils v0.0.52
+	github.com/projectdiscovery/utils v0.0.55
 	github.com/refraction-networking/utls v1.5.2
 	github.com/stretchr/testify v1.8.4
 	github.com/ulule/deepcopier v0.0.0-20200430083143-45decc6639b6
