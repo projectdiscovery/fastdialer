@@ -7,7 +7,7 @@ require (
 	github.com/pkg/errors v0.9.1
 	github.com/projectdiscovery/hmap v0.0.21
 	github.com/projectdiscovery/networkpolicy v0.0.6
-	github.com/projectdiscovery/retryabledns v1.0.37
+	github.com/projectdiscovery/retryabledns v1.0.38
 	github.com/projectdiscovery/utils v0.0.57
 	github.com/refraction-networking/utls v1.5.3
 	github.com/stretchr/testify v1.8.4
