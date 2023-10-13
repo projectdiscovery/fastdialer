@@ -5,16 +5,16 @@ go 1.20
 require (
 	github.com/dimchansky/utfbom v1.1.1
 	github.com/pkg/errors v0.9.1
-	github.com/projectdiscovery/hmap v0.0.13
+	github.com/projectdiscovery/hmap v0.0.22
 	github.com/projectdiscovery/networkpolicy v0.0.6
-	github.com/projectdiscovery/retryabledns v1.0.33
-	github.com/projectdiscovery/utils v0.0.49
+	github.com/projectdiscovery/retryabledns v1.0.38
+	github.com/projectdiscovery/utils v0.0.57
 	github.com/refraction-networking/utls v1.5.4
 	github.com/stretchr/testify v1.8.4
 	github.com/ulule/deepcopier v0.0.0-20200430083143-45decc6639b6
 	github.com/zmap/zcrypto v0.0.0-20220803033029-557f3e4940be
 	golang.org/x/exp v0.0.0-20221205204356-47842c84f3db
-	golang.org/x/net v0.14.0
+	golang.org/x/net v0.17.0
 )
 
 require (
@@ -29,7 +29,7 @@ require (
 	github.com/gorilla/css v1.0.0 // indirect
 	github.com/klauspost/compress v1.16.7 // indirect
 	github.com/microcosm-cc/bluemonday v1.0.25 // indirect
-	github.com/miekg/dns v1.1.55 // indirect
+	github.com/miekg/dns v1.1.56 // indirect
 	github.com/nxadm/tail v1.4.8 // indirect
 	github.com/pmezard/go-difflib v1.0.0 // indirect
 	github.com/projectdiscovery/blackrock v0.0.1 // indirect
@@ -49,10 +49,10 @@ require (
 	github.com/zmap/rc2 v0.0.0-20131011165748-24b9757f5521 // indirect
 	go.etcd.io/bbolt v1.3.7 // indirect
 	go.uber.org/multierr v1.11.0 // indirect
-	golang.org/x/crypto v0.12.0 // indirect
-	golang.org/x/mod v0.10.0 // indirect
-	golang.org/x/sys v0.11.0 // indirect
-	golang.org/x/text v0.12.0 // indirect
-	golang.org/x/tools v0.9.1 // indirect
+	golang.org/x/crypto v0.14.0 // indirect
+	golang.org/x/mod v0.12.0 // indirect
+	golang.org/x/sys v0.13.0 // indirect
+	golang.org/x/text v0.13.0 // indirect
+	golang.org/x/tools v0.13.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
