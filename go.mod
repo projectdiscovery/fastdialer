@@ -8,7 +8,7 @@ require (
 	github.com/projectdiscovery/hmap v0.0.23
 	github.com/projectdiscovery/networkpolicy v0.0.6
 	github.com/projectdiscovery/retryabledns v1.0.40
-	github.com/projectdiscovery/utils v0.0.58
+	github.com/projectdiscovery/utils v0.0.60
 	github.com/refraction-networking/utls v1.5.4
 	github.com/stretchr/testify v1.8.4
 	github.com/ulule/deepcopier v0.0.0-20200430083143-45decc6639b6
@@ -24,13 +24,13 @@ require (
 	github.com/aymerick/douceur v0.2.0 // indirect
 	github.com/cloudflare/circl v1.3.3 // indirect
 	github.com/davecgh/go-spew v1.1.1 // indirect
+	github.com/fsnotify/fsnotify v1.6.0 // indirect
 	github.com/gaukas/godicttls v0.0.4 // indirect
 	github.com/golang/snappy v0.0.4 // indirect
 	github.com/gorilla/css v1.0.0 // indirect
 	github.com/klauspost/compress v1.16.7 // indirect
 	github.com/microcosm-cc/bluemonday v1.0.25 // indirect
 	github.com/miekg/dns v1.1.56 // indirect
-	github.com/nxadm/tail v1.4.8 // indirect
 	github.com/pmezard/go-difflib v1.0.0 // indirect
 	github.com/projectdiscovery/blackrock v0.0.1 // indirect
 	github.com/quic-go/quic-go v0.37.4 // indirect
