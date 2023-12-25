@@ -5,7 +5,7 @@ go 1.20
 require (
 	github.com/dimchansky/utfbom v1.1.1
 	github.com/pkg/errors v0.9.1
-	github.com/projectdiscovery/hmap v0.0.30
+	github.com/projectdiscovery/hmap v0.0.31
 	github.com/projectdiscovery/networkpolicy v0.0.6
 	github.com/projectdiscovery/retryabledns v1.0.47
 	github.com/projectdiscovery/utils v0.0.68
