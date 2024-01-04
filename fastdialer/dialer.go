@@ -230,8 +230,14 @@ func (d *Dialer) dial(ctx context.Context, network, address string, shouldUseTLS
 	for _, ip := range IPS {
 		// check if we have allow/deny list
 		if !d.networkpolicy.Validate(ip) {
+			if d.options.OnInvalidTarget != nil {
+				d.options.OnInvalidTarget(hostname, ip, port)
+			}
 			numInvalidIPS++
 			continue
+		}
+		if d.options.OnBeforeDial != nil {
+			d.options.OnBeforeDial(hostname, ip, port)
 		}
 		hostPort := net.JoinHostPort(ip, port)
 		if shouldUseTLS {
@@ -346,7 +352,7 @@ func (d *Dialer) dial(ctx context.Context, network, address string, shouldUseTLS
 				}
 			}
 			if d.options.OnDialCallback != nil {
-				d.options.OnDialCallback(hostname, ip)
+				d.options.OnDialCallback(hostname, ip, port)
 			}
 			if d.options.WithTLSData && shouldUseTLS {
 				if connTLS, ok := conn.(*tls.Conn); ok {
