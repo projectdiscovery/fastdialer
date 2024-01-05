@@ -2,7 +2,6 @@ module github.com/projectdiscovery/fastdialer
 
 go 1.21
 
-
 require (
 	github.com/dimchansky/utfbom v1.1.1
 	github.com/pkg/errors v0.9.1

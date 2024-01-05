@@ -4,6 +4,7 @@ import (
 	"net"
 	"time"
 
+	"github.com/projectdiscovery/networkpolicy"
 	"golang.org/x/net/proxy"
 )
 
@@ -31,31 +32,32 @@ const (
 )
 
 type Options struct {
-	BaseResolvers       []string
-	MaxRetries          int
-	HostsFile           bool
-	ResolversFile       bool
-	EnableFallback      bool
-	Allow               []string
-	Deny                []string
-	AllowSchemeList     []string
-	DenySchemeList      []string
-	AllowPortList       []int
-	DenyPortList        []int
-	CacheType           CacheType
-	CacheMemoryMaxItems int // used by Memory cache type
-	DiskDbType          DiskDBType
-	WithDialerHistory   bool
-	WithCleanup         bool
-	WithTLSData         bool
-	DialerTimeout       time.Duration
-	DialerKeepAlive     time.Duration
-	Dialer              *net.Dialer
-	ProxyDialer         *proxy.Dialer
-	WithZTLS            bool
-	SNIName             string
-	OnDialCallback      func(hostname, IP string)
-	DisableZtlsFallback bool
+	BaseResolvers            []string
+	MaxRetries               int
+	HostsFile                bool
+	ResolversFile            bool
+	EnableFallback           bool
+	Allow                    []string
+	Deny                     []string
+	AllowSchemeList          []string
+	DenySchemeList           []string
+	AllowPortList            []int
+	DenyPortList             []int
+	CacheType                CacheType
+	CacheMemoryMaxItems      int // used by Memory cache type
+	DiskDbType               DiskDBType
+	WithDialerHistory        bool
+	WithCleanup              bool
+	WithTLSData              bool
+	DialerTimeout            time.Duration
+	DialerKeepAlive          time.Duration
+	Dialer                   *net.Dialer
+	ProxyDialer              *proxy.Dialer
+	WithZTLS                 bool
+	SNIName                  string
+	OnDialCallback           func(hostname, IP string)
+	DisableZtlsFallback      bool
+	WithNetworkPolicyOptions *networkpolicy.Options
 }
 
 // DefaultOptions of the cache
