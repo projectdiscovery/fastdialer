@@ -38,6 +38,10 @@ type Options struct {
 	EnableFallback      bool
 	Allow               []string
 	Deny                []string
+	AllowSchemeList     []string
+	DenySchemeList      []string
+	AllowPortList       []int
+	DenyPortList        []int
 	CacheType           CacheType
 	CacheMemoryMaxItems int // used by Memory cache type
 	DiskDbType          DiskDBType
