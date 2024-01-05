@@ -55,6 +55,8 @@ type Options struct {
 	ProxyDialer              *proxy.Dialer
 	WithZTLS                 bool
 	SNIName                  string
+	OnBeforeDial             func(hostname, IP, port string)
+	OnInvalidTarget          func(hostname, IP, port string)
 	OnDialCallback           func(hostname, IP string)
 	DisableZtlsFallback      bool
 	WithNetworkPolicyOptions *networkpolicy.Options
