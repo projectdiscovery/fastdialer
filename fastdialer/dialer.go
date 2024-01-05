@@ -108,10 +108,20 @@ func NewDialer(options Options) (*Dialer, error) {
 	}
 
 	var npOptions networkpolicy.Options
+	if options.WithNetworkPolicyOptions != nil {
+		npOptions = *options.WithNetworkPolicyOptions
+	}
+
 	// Populate deny list if necessary
 	npOptions.DenyList = append(npOptions.DenyList, options.Deny...)
 	// Populate allow list if necessary
 	npOptions.AllowList = append(npOptions.AllowList, options.Allow...)
+
+	npOptions.AllowPortList = append(npOptions.AllowPortList, options.AllowPortList...)
+	npOptions.DenyPortList = append(npOptions.DenyPortList, options.DenyPortList...)
+
+	npOptions.AllowSchemeList = append(npOptions.AllowSchemeList, options.AllowSchemeList...)
+	npOptions.DenySchemeList = append(npOptions.DenySchemeList, options.DenySchemeList...)
 
 	np, err := networkpolicy.New(npOptions)
 	if err != nil {
