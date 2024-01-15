@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/dimchansky/utfbom"
+	"github.com/projectdiscovery/fastdialer/fastdialer/metafiles"
 )
 
 func loadResolverFile() ([]string, error) {
@@ -39,13 +40,13 @@ func loadResolverFile() ([]string, error) {
 // HandleLine a resolver file line
 func HandleResolverLine(raw string) (ip string) {
 	// ignore comment
-	if IsComment(raw) {
+	if metafiles.IsComment(raw) {
 		return
 	}
 
 	// trim comment
-	if HasComment(raw) {
-		commentSplit := strings.Split(raw, commentChar)
+	if metafiles.HasComment(raw) {
+		commentSplit := strings.Split(raw, metafiles.CommentChar)
 		raw = commentSplit[0]
 	}
 
