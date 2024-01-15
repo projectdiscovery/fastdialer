@@ -9,7 +9,17 @@ import (
 
 	"github.com/dimchansky/utfbom"
 	"github.com/projectdiscovery/fastdialer/fastdialer/metafiles"
+	"github.com/projectdiscovery/utils/env"
 )
+
+var (
+	MaxResolverEntries = 4096
+)
+
+func init() {
+	// use -1 for all entries
+	MaxResolverEntries = env.GetEnvOrDefault("MAX_RESOLVERS", 4096)
+}
 
 func loadResolverFile() ([]string, error) {
 	osResolversFilePath := os.ExpandEnv(filepath.FromSlash(ResolverFilePath))
@@ -28,6 +38,9 @@ func loadResolverFile() ([]string, error) {
 
 	scanner := bufio.NewScanner(utfbom.SkipOnly(file))
 	for scanner.Scan() {
+		if MaxResolverEntries != -1 && len(systemResolvers) >= MaxResolverEntries {
+			break
+		}
 		resolverIP := HandleResolverLine(scanner.Text())
 		if resolverIP == "" {
 			continue
