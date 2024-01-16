@@ -13,10 +13,12 @@ import (
 	"time"
 
 	"github.com/projectdiscovery/fastdialer/fastdialer/ja3/impersonate"
+	"github.com/projectdiscovery/fastdialer/fastdialer/metafiles"
 	"github.com/projectdiscovery/hmap/store/hybrid"
 	"github.com/projectdiscovery/networkpolicy"
 	retryabledns "github.com/projectdiscovery/retryabledns"
 	cryptoutil "github.com/projectdiscovery/utils/crypto"
+	"github.com/projectdiscovery/utils/env"
 	errorutil "github.com/projectdiscovery/utils/errors"
 	iputil "github.com/projectdiscovery/utils/ip"
 	ptrutil "github.com/projectdiscovery/utils/ptr"
@@ -28,22 +30,24 @@ import (
 
 // option to disable ztls fallback in case of handshake error
 // reads from env variable DISABLE_ZTLS_FALLBACK
-var disableZTLSFallback = false
+var (
+	disableZTLSFallback = false
+	MaxDNSCacheSize     = 10 * 1024 * 1024 // 10 MB
+)
 
 func init() {
 	// enable permissive parsing for ztls, so that it can allow permissive parsing for X509 certificates
 	asn1.AllowPermissiveParsing = true
-	value := os.Getenv("DISABLE_ZTLS_FALLBACK")
-	if strings.EqualFold(value, "true") {
-		disableZTLSFallback = true
-	}
+	disableZTLSFallback = env.GetEnvOrDefault("DISABLE_ZTLS_FALLBACK", false)
+	MaxDNSCacheSize = env.GetEnvOrDefault("MAX_DNS_CACHE_SIZE", 10*1024*1024)
 }
 
 // Dialer structure containing data information
 type Dialer struct {
 	options       *Options
 	dnsclient     *retryabledns.Client
-	hm            *hybrid.HybridMap
+	dnsCache      *hybrid.HybridMap
+	hostsFileData *hybrid.HybridMap
 	dialerHistory *hybrid.HybridMap
 	dialerTLSData *hybrid.HybridMap
 	dialer        *net.Dialer
@@ -62,12 +66,8 @@ func NewDialer(options Options) (*Dialer, error) {
 		}
 	}
 
-	cacheOptions := getHMapConfiguration(options)
 	resolvers = append(resolvers, options.BaseResolvers...)
-	hm, err := hybrid.New(cacheOptions)
-	if err != nil {
-		return nil, err
-	}
+	var err error
 	var dialerHistory *hybrid.HybridMap
 	if options.WithDialerHistory {
 		// we need to use disk to store all the dialed ips
@@ -78,6 +78,22 @@ func NewDialer(options Options) (*Dialer, error) {
 			return nil, err
 		}
 	}
+	// when loading in memory set max size to 10 MB
+	var dnsCache *hybrid.HybridMap
+	if options.CacheType == Memory {
+		opts := hybrid.DefaultMemoryOptions
+		opts.MaxMemorySize = MaxDNSCacheSize
+		dnsCache, err = hybrid.New(opts)
+		if err != nil {
+			return nil, err
+		}
+	} else {
+		dnsCache, err = hybrid.New(hybrid.DefaultHybridOptions)
+		if err != nil {
+			return nil, err
+		}
+	}
+
 	var dialerTLSData *hybrid.HybridMap
 	if options.WithTLSData {
 		dialerTLSData, err = hybrid.New(hybrid.DefaultDiskOptions)
@@ -97,10 +113,14 @@ func NewDialer(options Options) (*Dialer, error) {
 		}
 	}
 
+	var hostsFileData *hybrid.HybridMap
 	// load hardcoded values from host file
 	if options.HostsFile {
-		// nolint:errcheck // if they cannot be loaded it's not a hard failure
-		loadHostsFile(hm)
+		if options.CacheType == Memory {
+			hostsFileData, _ = metafiles.GetHostsFileDnsData(metafiles.InMemory)
+		} else {
+			hostsFileData, _ = metafiles.GetHostsFileDnsData(metafiles.Hybrid)
+		}
 	}
 	dnsclient, err := retryabledns.New(resolvers, options.MaxRetries)
 	if err != nil {
@@ -128,7 +148,17 @@ func NewDialer(options Options) (*Dialer, error) {
 		return nil, err
 	}
 
-	return &Dialer{dnsclient: dnsclient, hm: hm, dialerHistory: dialerHistory, dialerTLSData: dialerTLSData, dialer: dialer, proxyDialer: options.ProxyDialer, options: &options, networkpolicy: np}, nil
+	return &Dialer{
+		dnsclient:     dnsclient,
+		dnsCache:      dnsCache,
+		hostsFileData: hostsFileData,
+		dialerHistory: dialerHistory,
+		dialerTLSData: dialerTLSData,
+		dialer:        dialer,
+		proxyDialer:   options.ProxyDialer,
+		options:       &options,
+		networkpolicy: np,
+	}, nil
 }
 
 // Dial function compatible with net/http
@@ -398,8 +428,8 @@ func (d *Dialer) dial(ctx context.Context, network, address string, shouldUseTLS
 
 // Close instance and cleanups
 func (d *Dialer) Close() {
-	if d.hm != nil {
-		d.hm.Close()
+	if d.dnsCache != nil {
+		d.dnsCache.Close()
 	}
 	if d.options.WithDialerHistory && d.dialerHistory != nil {
 		d.dialerHistory.Close()
@@ -407,6 +437,7 @@ func (d *Dialer) Close() {
 	if d.options.WithTLSData {
 		d.dialerTLSData.Close()
 	}
+	// donot close hosts file as it is meant to be shared
 }
 
 // GetDialedIP returns the ip dialed by the HTTP client
@@ -447,11 +478,17 @@ func (d *Dialer) GetTLSData(hostname string) (*cryptoutil.TLSData, error) {
 func (d *Dialer) GetDNSDataFromCache(hostname string) (*retryabledns.DNSData, error) {
 	hostname = asAscii(hostname)
 	var data retryabledns.DNSData
-	dataBytes, ok := d.hm.Get(hostname)
-	if !ok {
-		return nil, NoDNSDataError
+	var dataBytes []byte
+	var ok bool
+	if d.hostsFileData != nil {
+		dataBytes, ok = d.hostsFileData.Get(hostname)
 	}
-
+	if !ok {
+		dataBytes, ok = d.dnsCache.Get(hostname)
+		if !ok {
+			return nil, NoDNSDataError
+		}
+	}
 	err := data.Unmarshal(dataBytes)
 	return &data, err
 }
@@ -498,7 +535,7 @@ func (d *Dialer) GetDNSData(hostname string) (*retryabledns.DNSData, error) {
 		}
 		if len(data.A)+len(data.AAAA) > 0 {
 			b, _ := data.Marshal()
-			err = d.hm.Set(hostname, b)
+			err = d.dnsCache.Set(hostname, b)
 		}
 		if err != nil {
 			return nil, err
@@ -506,30 +543,6 @@ func (d *Dialer) GetDNSData(hostname string) (*retryabledns.DNSData, error) {
 		return data, nil
 	}
 	return data, nil
-}
-
-func getHMapConfiguration(options Options) hybrid.Options {
-	var cacheOptions hybrid.Options
-	switch options.CacheType {
-	case Memory:
-		cacheOptions = hybrid.DefaultMemoryOptions
-		if options.CacheMemoryMaxItems > 0 {
-			cacheOptions.MaxMemorySize = options.CacheMemoryMaxItems
-		}
-	case Disk:
-		cacheOptions = hybrid.DefaultDiskOptions
-		cacheOptions.DBType = getHMAPDBType(options)
-	case Hybrid:
-		cacheOptions = hybrid.DefaultHybridOptions
-	}
-	if options.WithCleanup {
-		cacheOptions.Cleanup = options.WithCleanup
-		if options.CacheMemoryMaxItems > 0 {
-			cacheOptions.MaxMemorySize = options.CacheMemoryMaxItems
-		}
-		cacheOptions.DBType = getHMAPDBType(options)
-	}
-	return cacheOptions
 }
 
 func getHMAPDBType(options Options) hybrid.DBType {

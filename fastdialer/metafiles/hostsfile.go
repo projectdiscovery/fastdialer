@@ -1,10 +1,11 @@
-package fastdialer
+package metafiles
 
 import (
 	"bufio"
 	"net"
 	"os"
 	"path/filepath"
+	"runtime/debug"
 	"strings"
 
 	"github.com/dimchansky/utfbom"
@@ -12,7 +13,8 @@ import (
 	"github.com/projectdiscovery/retryabledns"
 )
 
-func loadHostsFile(hm *hybrid.HybridMap) error {
+// loads Entries from hosts file if max is -1 it will load all entries to given hybrid map
+func loadHostsFile(hm *hybrid.HybridMap, max int) error {
 	osHostsFilePath := os.ExpandEnv(filepath.FromSlash(HostsFilePath))
 
 	if env, isset := os.LookupEnv("HOSTS_PATH"); isset && len(env) > 0 {
@@ -28,6 +30,9 @@ func loadHostsFile(hm *hybrid.HybridMap) error {
 	dnsDatas := make(map[string]retryabledns.DNSData)
 	scanner := bufio.NewScanner(utfbom.SkipOnly(file))
 	for scanner.Scan() {
+		if max > 0 && len(dnsDatas) == MaxHostsEntires {
+			break
+		}
 		ip, hosts := HandleHostLine(scanner.Text())
 		if ip == "" || len(hosts) == 0 {
 			continue
@@ -53,10 +58,15 @@ func loadHostsFile(hm *hybrid.HybridMap) error {
 		dnsdataBytes, _ := dnsdata.Marshal()
 		_ = hm.Set(host, dnsdataBytes)
 	}
+	if len(dnsDatas) > 10000 && max < 0 {
+		// this freeups memory when loading large hosts files
+		// useful when loading all entries to hybrid storage
+		debug.FreeOSMemory()
+	}
 	return nil
 }
 
-const commentChar string = "#"
+const CommentChar string = "#"
 
 // HandleHostLine a hosts file line
 func HandleHostLine(raw string) (ip string, hosts []string) {
@@ -67,7 +77,7 @@ func HandleHostLine(raw string) (ip string, hosts []string) {
 
 	// trim comment
 	if HasComment(raw) {
-		commentSplit := strings.Split(raw, commentChar)
+		commentSplit := strings.Split(raw, CommentChar)
 		raw = commentSplit[0]
 	}
 
@@ -88,10 +98,10 @@ func HandleHostLine(raw string) (ip string, hosts []string) {
 
 // IsComment check if the file is a comment
 func IsComment(raw string) bool {
-	return strings.HasPrefix(strings.TrimSpace(raw), commentChar)
+	return strings.HasPrefix(strings.TrimSpace(raw), CommentChar)
 }
 
 // HasComment check if the line has a comment
 func HasComment(raw string) bool {
-	return strings.Contains(raw, commentChar)
+	return strings.Contains(raw, CommentChar)
 }
