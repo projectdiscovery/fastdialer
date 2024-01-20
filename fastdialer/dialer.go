@@ -7,11 +7,14 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log"
 	"net"
 	"os"
 	"strings"
 	"time"
 
+	"github.com/Mzack9999/gcache"
+	gounit "github.com/docker/go-units"
 	"github.com/projectdiscovery/fastdialer/fastdialer/ja3/impersonate"
 	"github.com/projectdiscovery/fastdialer/fastdialer/metafiles"
 	"github.com/projectdiscovery/hmap/store/hybrid"
@@ -32,21 +35,31 @@ import (
 // reads from env variable DISABLE_ZTLS_FALLBACK
 var (
 	disableZTLSFallback = false
-	MaxDNSCacheSize     = 10 * 1024 * 1024 // 10 MB
+	MaxDNSCacheSize     int64
+	MaxDNSItems         = 1024
 )
 
 func init() {
 	// enable permissive parsing for ztls, so that it can allow permissive parsing for X509 certificates
 	asn1.AllowPermissiveParsing = true
 	disableZTLSFallback = env.GetEnvOrDefault("DISABLE_ZTLS_FALLBACK", false)
-	MaxDNSCacheSize = env.GetEnvOrDefault("MAX_DNS_CACHE_SIZE", 10*1024*1024)
+	maxCacheSize := env.GetEnvOrDefault("MAX_DNS_CACHE_SIZE", "10mb")
+	maxDnsCacheSize, err := gounit.FromHumanSize(maxCacheSize)
+	if err != nil {
+		panic(err)
+	}
+	MaxDNSCacheSize = maxDnsCacheSize
+	MaxDNSItems = env.GetEnvOrDefault("MAX_DNS_ITEMS", 1024)
 }
 
 // Dialer structure containing data information
 type Dialer struct {
-	options       *Options
-	dnsclient     *retryabledns.Client
-	dnsCache      *hybrid.HybridMap
+	options   *Options
+	dnsclient *retryabledns.Client
+	// memory typed cache
+	mDnsCache gcache.Cache[string, *retryabledns.DNSData]
+	// memory/disk untyped ([]byte) cache
+	hmDnsCache    *hybrid.HybridMap
 	hostsFileData *hybrid.HybridMap
 	dialerHistory *hybrid.HybridMap
 	dialerTLSData *hybrid.HybridMap
@@ -79,16 +92,15 @@ func NewDialer(options Options) (*Dialer, error) {
 		}
 	}
 	// when loading in memory set max size to 10 MB
-	var dnsCache *hybrid.HybridMap
+	var (
+		hmDnsCache *hybrid.HybridMap
+		dnsCache   gcache.Cache[string, *retryabledns.DNSData]
+	)
+	options.CacheType = Memory
 	if options.CacheType == Memory {
-		opts := hybrid.DefaultMemoryOptions
-		opts.MaxMemorySize = MaxDNSCacheSize
-		dnsCache, err = hybrid.New(opts)
-		if err != nil {
-			return nil, err
-		}
+		dnsCache = gcache.New[string, *retryabledns.DNSData](MaxDNSItems).Build()
 	} else {
-		dnsCache, err = hybrid.New(hybrid.DefaultHybridOptions)
+		hmDnsCache, err = hybrid.New(hybrid.DefaultHybridOptions)
 		if err != nil {
 			return nil, err
 		}
@@ -150,7 +162,8 @@ func NewDialer(options Options) (*Dialer, error) {
 
 	return &Dialer{
 		dnsclient:     dnsclient,
-		dnsCache:      dnsCache,
+		mDnsCache:     dnsCache,
+		hmDnsCache:    hmDnsCache,
 		hostsFileData: hostsFileData,
 		dialerHistory: dialerHistory,
 		dialerTLSData: dialerTLSData,
@@ -247,7 +260,6 @@ func (d *Dialer) dial(ctx context.Context, network, address string, shouldUseTLS
 	if err != nil {
 		// otherwise attempt to retrieve it
 		data, err = d.dnsclient.Resolve(hostname)
-
 	}
 	if data == nil {
 		return nil, ResolveHostError
@@ -428,8 +440,11 @@ func (d *Dialer) dial(ctx context.Context, network, address string, shouldUseTLS
 
 // Close instance and cleanups
 func (d *Dialer) Close() {
-	if d.dnsCache != nil {
-		d.dnsCache.Close()
+	if d.mDnsCache != nil {
+		d.mDnsCache.Purge()
+	}
+	if d.hmDnsCache != nil {
+		d.hmDnsCache.Close()
 	}
 	if d.options.WithDialerHistory && d.dialerHistory != nil {
 		d.dialerHistory.Close()
@@ -484,7 +499,11 @@ func (d *Dialer) GetDNSDataFromCache(hostname string) (*retryabledns.DNSData, er
 		dataBytes, ok = d.hostsFileData.Get(hostname)
 	}
 	if !ok {
-		dataBytes, ok = d.dnsCache.Get(hostname)
+		if d.mDnsCache != nil {
+			return d.mDnsCache.GetIFPresent(hostname)
+		}
+
+		dataBytes, ok = d.hmDnsCache.Get(hostname)
 		if !ok {
 			return nil, NoDNSDataError
 		}
@@ -534,11 +553,19 @@ func (d *Dialer) GetDNSData(hostname string) (*retryabledns.DNSData, error) {
 			return nil, ResolveHostError
 		}
 		if len(data.A)+len(data.AAAA) > 0 {
-			b, _ := data.Marshal()
-			err = d.dnsCache.Set(hostname, b)
-		}
-		if err != nil {
-			return nil, err
+			if d.mDnsCache != nil {
+				d.mDnsCache.Set(hostname, data)
+			}
+
+			if d.hmDnsCache != nil {
+				b, _ := data.Marshal()
+				log.Fatal(hostname)
+				err := d.hmDnsCache.Set(hostname, b)
+				if err != nil {
+					return nil, err
+				}
+			}
+
 		}
 		return data, nil
 	}

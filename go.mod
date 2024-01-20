@@ -3,7 +3,9 @@ module github.com/projectdiscovery/fastdialer
 go 1.21
 
 require (
+	github.com/Mzack9999/gcache v0.0.0-20230410081825-519e28eab057
 	github.com/dimchansky/utfbom v1.1.1
+	github.com/docker/go-units v0.5.0
 	github.com/pkg/errors v0.9.1
 	github.com/projectdiscovery/hmap v0.0.34
 	github.com/projectdiscovery/networkpolicy v0.0.7
