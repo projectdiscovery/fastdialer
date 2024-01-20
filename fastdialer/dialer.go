@@ -7,7 +7,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"log"
 	"net"
 	"os"
 	"strings"
@@ -554,12 +553,17 @@ func (d *Dialer) GetDNSData(hostname string) (*retryabledns.DNSData, error) {
 		}
 		if len(data.A)+len(data.AAAA) > 0 {
 			if d.mDnsCache != nil {
-				d.mDnsCache.Set(hostname, data)
+				err := d.mDnsCache.Set(hostname, data)
+				if err != nil {
+					return nil, err
+				}
 			}
 
 			if d.hmDnsCache != nil {
 				b, _ := data.Marshal()
-				log.Fatal(hostname)
+				if err != nil {
+					return nil, err
+				}
 				err := d.hmDnsCache.Set(hostname, b)
 				if err != nil {
 					return nil, err
