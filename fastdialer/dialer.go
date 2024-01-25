@@ -223,6 +223,11 @@ func (d *Dialer) DialZTLSWithConfig(ctx context.Context, network, address string
 }
 
 func (d *Dialer) dial(ctx context.Context, network, address string, shouldUseTLS, shouldUseZTLS bool, tlsconfig *tls.Config, ztlsconfig *ztls.Config, impersonateStrategy impersonate.Strategy, impersonateIdentity *impersonate.Identity) (conn net.Conn, err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			err = fmt.Errorf("panic: %v", r)
+		}
+	}()
 	var hostname, port, fixedIP string
 
 	if strings.HasPrefix(address, "[") {
