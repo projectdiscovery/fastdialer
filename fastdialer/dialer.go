@@ -127,10 +127,14 @@ func NewDialer(options Options) (*Dialer, error) {
 	var hostsFileData *hybrid.HybridMap
 	// load hardcoded values from host file
 	if options.HostsFile {
+		var err error
 		if options.CacheType == Memory {
-			hostsFileData, _ = metafiles.GetHostsFileDnsData(metafiles.InMemory)
+			hostsFileData, err = metafiles.GetHostsFileDnsData(metafiles.InMemory)
 		} else {
-			hostsFileData, _ = metafiles.GetHostsFileDnsData(metafiles.Hybrid)
+			hostsFileData, err = metafiles.GetHostsFileDnsData(metafiles.Hybrid)
+		}
+		if err != nil {
+			return nil, err
 		}
 	}
 	dnsclient, err := retryabledns.New(resolvers, options.MaxRetries)
