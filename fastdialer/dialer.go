@@ -133,8 +133,8 @@ func NewDialer(options Options) (*Dialer, error) {
 		} else {
 			hostsFileData, err = metafiles.GetHostsFileDnsData(metafiles.Hybrid)
 		}
-		if err != nil {
-			return nil, err
+		if options.Logger != nil && err != nil {
+			options.Logger.Printf("could not load hosts file: %s\n", err)
 		}
 	}
 	dnsclient, err := retryabledns.New(resolvers, options.MaxRetries)
