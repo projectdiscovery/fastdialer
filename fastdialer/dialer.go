@@ -127,10 +127,14 @@ func NewDialer(options Options) (*Dialer, error) {
 	var hostsFileData *hybrid.HybridMap
 	// load hardcoded values from host file
 	if options.HostsFile {
+		var err error
 		if options.CacheType == Memory {
-			hostsFileData, _ = metafiles.GetHostsFileDnsData(metafiles.InMemory)
+			hostsFileData, err = metafiles.GetHostsFileDnsData(metafiles.InMemory)
 		} else {
-			hostsFileData, _ = metafiles.GetHostsFileDnsData(metafiles.Hybrid)
+			hostsFileData, err = metafiles.GetHostsFileDnsData(metafiles.Hybrid)
+		}
+		if options.Logger != nil && err != nil {
+			options.Logger.Printf("could not load hosts file: %s\n", err)
 		}
 	}
 	dnsclient, err := retryabledns.New(resolvers, options.MaxRetries)
@@ -219,6 +223,11 @@ func (d *Dialer) DialZTLSWithConfig(ctx context.Context, network, address string
 }
 
 func (d *Dialer) dial(ctx context.Context, network, address string, shouldUseTLS, shouldUseZTLS bool, tlsconfig *tls.Config, ztlsconfig *ztls.Config, impersonateStrategy impersonate.Strategy, impersonateIdentity *impersonate.Identity) (conn net.Conn, err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			err = fmt.Errorf("panic: %v", r)
+		}
+	}()
 	var hostname, port, fixedIP string
 
 	if strings.HasPrefix(address, "[") {

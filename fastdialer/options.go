@@ -1,6 +1,7 @@
 package fastdialer
 
 import (
+	"log"
 	"net"
 	"time"
 
@@ -60,6 +61,7 @@ type Options struct {
 	OnDialCallback           func(hostname, IP string)
 	DisableZtlsFallback      bool
 	WithNetworkPolicyOptions *networkpolicy.Options
+	Logger                   *log.Logger // optional logger to log errors(like hostfile init error)
 }
 
 // DefaultOptions of the cache

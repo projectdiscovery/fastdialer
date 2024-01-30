@@ -39,51 +39,57 @@ func GetHostsFileDnsData(storage StorageType) (*hybrid.HybridMap, error) {
 	case Hybrid:
 		return getHFHybridStorage()
 	}
-	return nil, nil
+	return getHFInMemory()
 }
 
-var hostsMemOnce = &sync.Once{}
+// == initialize in-memory hostmap on demand
+var (
+	hmMem       *hybrid.HybridMap
+	hmErr       error
+	hostMemInit = sync.OnceFunc(func() {
+		opts := hybrid.DefaultMemoryOptions
+		hmMem, hmErr = hybrid.New(opts)
+		if hmErr != nil {
+			return
+		}
+		hmErr = loadHostsFile(hmMem, MaxHostsEntires)
+		if hmErr != nil {
+			hmMem.Close()
+			return
+		}
+	})
+)
 
 // getImm
 func getHFInMemory() (*hybrid.HybridMap, error) {
-	var hm *hybrid.HybridMap
-	var err error
-	hostsMemOnce.Do(func() {
-		opts := hybrid.DefaultMemoryOptions
-		hm, err = hybrid.New(opts)
-		if err != nil {
-			return
-		}
-		err = loadHostsFile(hm, MaxHostsEntires)
-		if err != nil {
-			hm.Close()
-			return
-		}
-	})
-	return hm, nil
+	hostMemInit()
+	return hmMem, hmErr
 }
 
-var hostsHybridOnce = &sync.Once{}
-
-func getHFHybridStorage() (*hybrid.HybridMap, error) {
-	var hm *hybrid.HybridMap
-	var err error
-	hostsHybridOnce.Do(func() {
+// == initialize hybrid hostmap on demand
+var (
+	hmHybrid  *hybrid.HybridMap
+	hmHybErr  error
+	hmHybInit = sync.OnceFunc(func() {
 		opts := hybrid.DefaultHybridOptions
 		opts.Cleanup = true
-		hm, err = hybrid.New(opts)
-		if err != nil {
+		hmHybrid, hmHybErr = hybrid.New(opts)
+		if hmHybErr != nil {
 			return
 		}
-		err = loadHostsFile(hm, -1)
-		if err != nil {
-			hm.Close()
+		hmHybErr = loadHostsFile(hmHybrid, -1)
+		if hmHybErr != nil {
+			hmHybrid.Close()
 			return
 		}
 		// set finalizer for cleanup
-		runtime.SetFinalizer(hm, func(hm *hybrid.HybridMap) {
+		runtime.SetFinalizer(hmHybrid, func(hm *hybrid.HybridMap) {
 			_ = hm.Close()
 		})
 	})
-	return hm, nil
+)
+
+func getHFHybridStorage() (*hybrid.HybridMap, error) {
+	hmHybInit()
+	return hmHybrid, hmHybErr
 }
