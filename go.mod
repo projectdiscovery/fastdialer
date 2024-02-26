@@ -13,7 +13,6 @@ require (
 	github.com/projectdiscovery/utils v0.0.80
 	github.com/refraction-networking/utls v1.5.4
 	github.com/stretchr/testify v1.8.4
-	github.com/ulule/deepcopier v0.0.0-20200430083143-45decc6639b6
 	github.com/zmap/zcrypto v0.0.0-20230422215203-9a665e1e9968
 	golang.org/x/exp v0.0.0-20221205204356-47842c84f3db
 	golang.org/x/net v0.17.0
