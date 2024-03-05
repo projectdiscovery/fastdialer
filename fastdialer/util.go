@@ -3,21 +3,36 @@ package fastdialer
 import (
 	"crypto/tls"
 
-	"github.com/ulule/deepcopier"
 	ztls "github.com/zmap/zcrypto/tls"
 	"golang.org/x/net/idna"
 )
 
 func AsTLSConfig(ztlsConfig *ztls.Config) (*tls.Config, error) {
-	tlsConfig := &tls.Config{}
-	err := deepcopier.Copy(ztlsConfig).To(tlsConfig)
-	return tlsConfig, err
+	tlsConfig := &tls.Config{
+		NextProtos:             ztlsConfig.NextProtos,
+		ServerName:             ztlsConfig.ServerName,
+		ClientAuth:             tls.ClientAuthType(ztlsConfig.ClientAuth),
+		InsecureSkipVerify:     ztlsConfig.InsecureSkipVerify,
+		CipherSuites:           ztlsConfig.CipherSuites,
+		SessionTicketsDisabled: ztlsConfig.SessionTicketsDisabled,
+		MinVersion:             ztlsConfig.MinVersion,
+		MaxVersion:             ztlsConfig.MaxVersion,
+	}
+	return tlsConfig, nil
 }
 
 func AsZTLSConfig(tlsConfig *tls.Config) (*ztls.Config, error) {
-	ztlsConfig := &ztls.Config{}
-	err := deepcopier.Copy(tlsConfig).To(ztlsConfig)
-	return ztlsConfig, err
+	ztlsConfig := &ztls.Config{
+		NextProtos:             tlsConfig.NextProtos,
+		ServerName:             tlsConfig.ServerName,
+		ClientAuth:             ztls.ClientAuthType(tlsConfig.ClientAuth),
+		InsecureSkipVerify:     tlsConfig.InsecureSkipVerify,
+		CipherSuites:           tlsConfig.CipherSuites,
+		SessionTicketsDisabled: tlsConfig.SessionTicketsDisabled,
+		MinVersion:             tlsConfig.MinVersion,
+		MaxVersion:             tlsConfig.MaxVersion,
+	}
+	return ztlsConfig, nil
 }
 
 func IsTLS13(config interface{}) bool {
