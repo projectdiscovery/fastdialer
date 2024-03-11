@@ -8,11 +8,11 @@ require (
 	github.com/docker/go-units v0.5.0
 	github.com/pkg/errors v0.9.1
 	github.com/projectdiscovery/hmap v0.0.41
-	github.com/projectdiscovery/networkpolicy v0.0.7
+	github.com/projectdiscovery/networkpolicy v0.0.8
 	github.com/projectdiscovery/retryabledns v1.0.58
 	github.com/projectdiscovery/utils v0.0.83
 	github.com/refraction-networking/utls v1.5.4
-	github.com/stretchr/testify v1.8.4
+	github.com/stretchr/testify v1.9.0
 	github.com/zmap/zcrypto v0.0.0-20230422215203-9a665e1e9968
 	golang.org/x/exp v0.0.0-20221205204356-47842c84f3db
 	golang.org/x/net v0.17.0
