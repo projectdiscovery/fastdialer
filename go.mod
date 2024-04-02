@@ -34,7 +34,7 @@ require (
 	github.com/miekg/dns v1.1.56 // indirect
 	github.com/pmezard/go-difflib v1.0.0 // indirect
 	github.com/projectdiscovery/blackrock v0.0.1 // indirect
-	github.com/quic-go/quic-go v0.37.7 // indirect
+	github.com/quic-go/quic-go v0.42.0 // indirect
 	github.com/saintfish/chardet v0.0.0-20230101081208-5e3ef4b5456d // indirect
 	github.com/syndtr/goleveldb v1.0.0 // indirect
 	github.com/tidwall/btree v1.4.3 // indirect
