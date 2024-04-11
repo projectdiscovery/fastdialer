@@ -191,7 +191,6 @@ func (d *Dialer) dial(ctx context.Context, network, address string, shouldUseTLS
 		return nil, NoAddressFoundError
 	}
 
-	var numInvalidIPS int
 	var IPS []string
 	// use fixed ip as first
 	if fixedIP != "" {
@@ -203,8 +202,7 @@ func (d *Dialer) dial(ctx context.Context, network, address string, shouldUseTLS
 	for _, ip := range IPS {
 		// check if we have allow/deny list
 		if !d.networkpolicy.Validate(ip) {
-			numInvalidIPS++
-			continue
+			return nil, NoAddressAllowedError
 		}
 		hostPort := net.JoinHostPort(ip, port)
 		if shouldUseTLS {
@@ -288,9 +286,6 @@ func (d *Dialer) dial(ctx context.Context, network, address string, shouldUseTLS
 	}
 
 	if conn == nil {
-		if numInvalidIPS == len(IPS) {
-			return nil, NoAddressAllowedError
-		}
 		return nil, CouldNotConnectError
 	}
 
