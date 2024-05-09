@@ -160,9 +160,9 @@ func NewDialer(options Options) (*Dialer, error) {
 	if err != nil {
 		return nil, err
 	}
-	if options.Dialer.Timeout == 0 {
+	if options.DialerTimeout == 0 {
 		// use defaults just in case if not set
-		options.Dialer.Timeout = DefaultOptions.DialerTimeout
+		options.DialerTimeout = DefaultOptions.DialerTimeout
 	}
 
 	dx := &Dialer{
