@@ -4,17 +4,14 @@ import (
 	"context"
 	"crypto/tls"
 	"errors"
-	"fmt"
 	"net"
 	"os"
-	"time"
 
 	"github.com/projectdiscovery/fastdialer/fastdialer/ja3/impersonate"
 	errorutil "github.com/projectdiscovery/utils/errors"
 	ptrutil "github.com/projectdiscovery/utils/ptr"
 	utls "github.com/refraction-networking/utls"
 	ztls "github.com/zmap/zcrypto/tls"
-	"golang.org/x/net/proxy"
 )
 
 // ConnWrapper is a interface that implements higher level logic for a simple net.Conn
@@ -33,6 +30,9 @@ type connWrap struct {
 	nd net.Conn
 }
 
+// NewConnWrap creates a new connection wrapper
+// that allows escalating layer 4 connections to higher level
+// tls, ztls, or proxy connections
 func NewConnWrap(nd net.Conn) ConnWrapper {
 	return &connWrap{nd: nd}
 }
@@ -40,30 +40,14 @@ func NewConnWrap(nd net.Conn) ConnWrapper {
 // DialTLS connects to the address on the named network using TLS.
 // If ztlsFallback is true, it will fallback to ZTLS if the handshake fails.
 func (d *connWrap) DialTLS(ctx context.Context, network, address string, config *tls.Config, ztlsFallback bool) (net.Conn, error) {
-	// fallback to ztls  in case of handshake error with chrome ciphers
-	// ztls fallback can either be disabled by setting env variable DISABLE_ZTLS_FALLBACK=true or by setting DisableZtlsFallback=true in options
-	if err != nil && !errors.Is(err, os.ErrDeadlineExceeded) && !(d.options.DisableZtlsFallback && disableZTLSFallback) {
+	// todo: check if config verification is needed
+	tlsConn := tls.Client(d.nd, config)
+	err := tlsConn.HandshakeContext(ctx)
+	if err == nil || errors.Is(err, os.ErrDeadlineExceeded) || !ztlsFallback {
+		return tlsConn, nil
+	}
+	// fallback with chrome ciphers by default
 
-	}
-	var ztlsconfigCopy *ztls.Config
-	if opts.shouldUseZTLS {
-		ztlsconfigCopy = opts.ztlsconfig.Clone()
-	} else {
-		if opts.tlsconfig == nil {
-			opts.tlsconfig = &tls.Config{
-				Renegotiation:      tls.RenegotiateOnceAsClient,
-				MinVersion:         tls.VersionTLS10,
-				InsecureSkipVerify: true,
-			}
-		}
-		ztlsconfigCopy, err = AsZTLSConfig(opts.tlsconfig)
-		if err != nil {
-			return nil, errorutil.NewWithErr(err).Msgf("could not convert tls config to ztls config")
-		}
-	}
-	ztlsconfigCopy.CipherSuites = ztls.ChromeCiphers
-	conn, err = ztls.DialWithDialer(d.dialer, opts.network, hostPort, ztlsconfigCopy)
-	err = errorutil.WrapfWithNil(err, "ztls fallback failed")
 }
 
 // DialTLSAndImpersonate connects to the address on the named network using TLS and impersonates with given data
@@ -94,45 +78,29 @@ func (d *connWrap) DialTLSAndImpersonate(ctx context.Context, network, address s
 
 // DialZTLS connects to the address on the named network using ZTLS.
 func (d *connWrap) DialZTLS(ctx context.Context, network, address string, config *ztls.Config) (net.Conn, error) {
-}
-
-// WithProxyDialer dials with a proxy dialer. (does not suppport TLS or ZTLS)
-func (d *connWrap) WithProxyDialer(ctx context.Context, proxyDialer proxy.Dialer, network, address string) (net.Conn, error) {
-	dialer := *d.proxyDialer
-	// timeout not working for socks5 proxy dialer
-	// tying to handle it here
-	connectionCh := make(chan net.Conn, 1)
-	errCh := make(chan error, 1)
-	go func() {
-		conn, err = dialer.Dial(opts.network, hostPort)
-		if err != nil {
-			errCh <- err
-			return
-		}
-		connectionCh <- conn
-	}()
-	// using timer as time.After is not recovered gy GC
-	dialerTime := time.NewTimer(d.options.DialerTimeout)
-	defer dialerTime.Stop()
-	select {
-	case <-dialerTime.C:
-		return nil, fmt.Errorf("timeout after %v", d.options.DialerTimeout)
-	case conn = <-connectionCh:
-	case err = <-errCh:
+	ztlsConn := ztls.Client(d.nd, config)
+	// use execWithReturn to inject context
+	if err := ztlsConn.Handshake(); err != nil {
+		return nil, err
 	}
+
+	var ztlsconfigCopy *ztls.Config
+	if opts.shouldUseZTLS {
+		ztlsconfigCopy = opts.ztlsconfig.Clone()
+	} else {
+		if opts.tlsconfig == nil {
+			opts.tlsconfig = &tls.Config{
+				Renegotiation:      tls.RenegotiateOnceAsClient,
+				MinVersion:         tls.VersionTLS10,
+				InsecureSkipVerify: true,
+			}
+		}
+		ztlsconfigCopy, err = AsZTLSConfig(opts.tlsconfig)
+		if err != nil {
+			return nil, errorutil.NewWithErr(err).Msgf("could not convert tls config to ztls config")
+		}
+	}
+	ztlsconfigCopy.CipherSuites = ztls.ChromeCiphers
+	conn, err = ztls.DialWithDialer(d.dialer, opts.network, hostPort, ztlsconfigCopy)
+	err = errorutil.WrapfWithNil(err, "ztls fallback failed")
 }
-
-// // dialtcp
-// func (d *Dialer) dialtcp(ctx context.Context, network, address string) (net.Conn, error) {
-// 	return d.dialer.DialContext(ctx, network, address)
-// }
-
-// // dialtls
-// func (d *Dialer) dialtls(_ context.Context, network, address string, config *tls.Config) (net.Conn, error) {
-// 	return tls.DialWithDialer(d.dialer, network, address, config)
-// }
-
-// // dialztls
-// func (d *Dialer) dialztls(ctx context.Context, network, address string, config *ztls.Config) (net.Conn, error) {
-// 	return ztls.DialWithDialer(d.dialer, network, address, config)
-// }
