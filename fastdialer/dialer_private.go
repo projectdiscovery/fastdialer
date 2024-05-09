@@ -27,6 +27,9 @@ type dialOptions struct {
 }
 
 func (d *Dialer) dial(ctx context.Context, opts *dialOptions) (conn net.Conn, err error) {
+	if ctx.Err() != nil {
+		return nil, ctx.Err()
+	}
 	defer func() {
 		if r := recover(); r != nil {
 			err = fmt.Errorf("panic: %v", r)
@@ -113,6 +116,9 @@ func (d *Dialer) getLayer4Conn(ctx context.Context, network, hostname string, po
 		// no need to use handler at all if given input is ip
 		// or only one ip is available
 		for _, ip := range ips {
+			if ctx.Err() != nil {
+				return nil, "", ctx.Err()
+			}
 			d.acquire()
 			conn, err := d.simpleDialer.Dial(ctx, network, net.JoinHostPort(ip, port))
 			conn = d.releaseWithHook(conn)

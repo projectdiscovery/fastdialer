@@ -2,14 +2,22 @@ package tests
 
 import (
 	"context"
+	"sync"
 	"testing"
 	"time"
 
 	"github.com/projectdiscovery/fastdialer/fastdialer"
 	"github.com/stretchr/testify/require"
+	"github.com/tarunKoyalwar/goleak"
 )
 
 func TestFastDialerIP(t *testing.T) {
+	// leak test
+	defer func() {
+		time.Sleep(2 * time.Second)
+		goleak.VerifyNone(t, goleak.Pretty())
+	}()
+
 	opts := fastdialer.DefaultOptions
 	opts.DialerTimeout = time.Duration(5) * time.Second
 	fd, err := fastdialer.NewDialer(opts)
@@ -45,6 +53,12 @@ func TestFastDialerIP(t *testing.T) {
 }
 
 func TestFastDialerDomains(t *testing.T) {
+	// leak test
+	defer func() {
+		time.Sleep(2 * time.Second)
+		goleak.VerifyNone(t, goleak.Pretty())
+	}()
+
 	opts := fastdialer.DefaultOptions
 	opts.DialerTimeout = time.Duration(5) * time.Second
 	fd, err := fastdialer.NewDialer(opts)
@@ -69,7 +83,7 @@ func TestFastDialerDomains(t *testing.T) {
 
 	t.Run("Dial TCP Domain with TLS", func(t *testing.T) {
 		t.Parallel()
-		conn, err := fd.Dial(context.TODO(), "tcp", "scanme.sh:443")
+		conn, err := fd.DialTLS(context.TODO(), "tcp", "scanme.sh:443")
 		require.Nil(t, err)
 		require.NotNil(t, conn)
 		_ = conn.Close()
@@ -77,6 +91,12 @@ func TestFastDialerDomains(t *testing.T) {
 }
 
 func TestFastDialerDomainMultiIP(t *testing.T) {
+	// leak test
+	defer func() {
+		time.Sleep(2 * time.Second)
+		goleak.VerifyNone(t, goleak.Pretty())
+	}()
+
 	// domain that has multiple ips like projectdiscovery.io
 	opts := fastdialer.DefaultOptions
 	opts.DialerTimeout = time.Duration(5) * time.Second
@@ -104,7 +124,7 @@ func TestFastDialerDomainMultiIP(t *testing.T) {
 
 	t.Run("Dial TCP Domain with TLS", func(t *testing.T) {
 		t.Parallel()
-		conn, err := fd.Dial(context.TODO(), "tcp", "projectdiscovery.io:443")
+		conn, err := fd.DialTLS(context.TODO(), "tcp", "projectdiscovery.io:443")
 		require.Nil(t, err)
 		require.NotNil(t, conn)
 		_ = conn.Close()
@@ -112,6 +132,12 @@ func TestFastDialerDomainMultiIP(t *testing.T) {
 }
 
 func TestFastDialerDomainsInvalid(t *testing.T) {
+	// leak test
+	defer func() {
+		time.Sleep(2 * time.Second)
+		goleak.VerifyNone(t, goleak.Pretty())
+	}()
+
 	opts := fastdialer.DefaultOptions
 	opts.DialerTimeout = time.Duration(5) * time.Second
 	fd, err := fastdialer.NewDialer(opts)
@@ -127,8 +153,47 @@ func TestFastDialerDomainsInvalid(t *testing.T) {
 
 	t.Run("Dial TCP Invalid Domain with TLS", func(t *testing.T) {
 		t.Parallel()
-		conn, err := fd.Dial(context.TODO(), "tcp", "invalid.invalid:443")
+		conn, err := fd.DialTLS(context.TODO(), "tcp", "invalid.invalid:443")
 		require.NotNil(t, err)
 		require.Nil(t, conn)
 	})
+}
+
+func TestFastDialerNConcurrent(t *testing.T) {
+	// leak test
+	defer func() {
+		time.Sleep(2 * time.Second)
+		goleak.VerifyNone(t, goleak.Pretty())
+	}()
+
+	opts := fastdialer.DefaultOptions
+	opts.DialerTimeout = time.Duration(5) * time.Second
+	fd, err := fastdialer.NewDialer(opts)
+	require.Nil(t, err)
+	defer fd.Close()
+
+	wg := &sync.WaitGroup{}
+
+	for i := 0; i < 5; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			// scanme.sh ip
+			conn, _ := fd.Dial(context.TODO(), "tcp", "scanme.sh:80")
+			if conn != nil {
+				_ = conn.Close()
+			}
+		}()
+
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			conn, _ := fd.DialTLS(context.TODO(), "tcp", "scanme.sh:443")
+			if conn != nil {
+				_ = conn.Close()
+			}
+		}()
+	}
+
+	wg.Wait()
 }

@@ -32,6 +32,9 @@ func NewSimpleDialer(nd *net.Dialer, pd proxy.Dialer, timeout time.Duration) Sim
 }
 
 func (d *simpleDialer) Dial(ctx context.Context, network, address string) (net.Conn, error) {
+	if ctx.Err() != nil {
+		return nil, ctx.Err()
+	}
 	if d.pd != nil {
 		ctx, cancel := context.WithTimeoutCause(ctx, d.timeout, errors.New("dialer timeout"))
 		defer cancel()

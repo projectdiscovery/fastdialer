@@ -40,6 +40,10 @@ func NewConnWrap(nd net.Conn) ConnWrapper {
 // DialTLS connects to the address on the named network using TLS.
 // If ztlsFallback is true, it will fallback to ZTLS if the handshake fails.
 func (d *connWrap) DialTLS(ctx context.Context, network, address string, config *tls.Config, ztlsFallback bool) (net.Conn, error) {
+	if ctx.Err() != nil {
+		return nil, ctx.Err()
+	}
+
 	if config == nil {
 		config = getDefaultTLSConfig()
 	}
@@ -57,6 +61,9 @@ func (d *connWrap) DialTLS(ctx context.Context, network, address string, config 
 
 // DialTLSAndImpersonate connects to the address on the named network using TLS and impersonates with given data
 func (d *connWrap) DialTLSAndImpersonate(ctx context.Context, network, address string, config *tls.Config, strategy impersonate.Strategy, identify *impersonate.Identity) (net.Conn, error) {
+	if ctx.Err() != nil {
+		return nil, ctx.Err()
+	}
 	// clone existing tls config
 	uTLSConfig := &utls.Config{
 		InsecureSkipVerify: config.InsecureSkipVerify,
@@ -84,6 +91,10 @@ func (d *connWrap) DialTLSAndImpersonate(ctx context.Context, network, address s
 
 // DialZTLS connects to the address on the named network using ZTLS.
 func (d *connWrap) DialZTLS(ctx context.Context, network, address string, config *ztls.Config) (net.Conn, error) {
+	if ctx.Err() != nil {
+		return nil, ctx.Err()
+	}
+
 	if config == nil {
 		config = AsZTLSConfig(getDefaultTLSConfig())
 		config.CipherSuites = ztls.ChromeCiphers // for reliable fallback

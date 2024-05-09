@@ -63,10 +63,11 @@ type Dialer struct {
 	group          simpleflight.Group[string]
 	l4HandlerCache gcache.Cache[string, *l4ConnHandler]
 	sg             *sizedwaitgroup.SizedWaitGroup
+	ctx            context.Context
+	cancel         context.CancelFunc
 }
 
-// NewDialer instance
-func NewDialer(options Options) (*Dialer, error) {
+func NewDialerWithCtx(ctx context.Context, options Options) (*Dialer, error) {
 	var resolvers []string
 	// Add system resolvers as the first to be tried
 	if options.ResolversFile {
@@ -190,7 +191,13 @@ func NewDialer(options Options) (*Dialer, error) {
 		tmp := sizedwaitgroup.New(options.MaxOpenConnections)
 		dx.sg = &tmp
 	}
+	dx.ctx, dx.cancel = context.WithCancel(ctx)
 	return dx, nil
+}
+
+// NewDialer instance
+func NewDialer(options Options) (*Dialer, error) {
+	return NewDialerWithCtx(context.Background(), options)
 }
 
 // Dial function compatible with net/http
@@ -404,6 +411,7 @@ func (d *Dialer) GetDNSData(hostname string) (*retryabledns.DNSData, error) {
 
 // Close instance and cleanups
 func (d *Dialer) Close() {
+	d.cancel()
 	if d.mDnsCache != nil {
 		d.mDnsCache.Purge()
 	}

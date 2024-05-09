@@ -19,6 +19,8 @@ require (
 	golang.org/x/net v0.23.0
 )
 
+require github.com/logrusorgru/aurora/v4 v4.0.0 // indirect
+
 require (
 	github.com/akrylysov/pogreb v0.10.1 // indirect
 	github.com/andybalholm/brotli v1.0.6 // indirect
@@ -39,6 +41,7 @@ require (
 	github.com/remeh/sizedwaitgroup v1.0.0
 	github.com/saintfish/chardet v0.0.0-20230101081208-5e3ef4b5456d // indirect
 	github.com/syndtr/goleveldb v1.0.0 // indirect
+	github.com/tarunKoyalwar/goleak v0.0.0-20240429141123-0efa90dbdcf9
 	github.com/tidwall/btree v1.4.3 // indirect
 	github.com/tidwall/buntdb v1.3.0 // indirect
 	github.com/tidwall/gjson v1.14.3 // indirect
