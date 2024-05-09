@@ -2,6 +2,7 @@ package fastdialer
 
 import (
 	"context"
+	"math/rand"
 	"net"
 	"sync"
 	"sync/atomic"
@@ -281,6 +282,16 @@ func (d *l4ConnHandler) getConn(ctx context.Context) (net.Conn, string, error) {
 				continue
 			}
 			return res.conn, res.ip, res.err
+		// need to rework this part
+		case d.poolingChan <- func() *dialResult {
+			index := rand.Intn(len(d.ips))
+			ip := d.ips[index]
+			d.fd.acquire() // no-op if max open connections is not set
+			conn, err := d.fd.simpleDialer.Dial(ctx, d.network, net.JoinHostPort(ip, d.port))
+			conn = d.fd.releaseWithHook(conn)
+			return &dialResult{conn, err, ip}
+		}():
+			continue
 		}
 	}
 }
