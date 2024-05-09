@@ -18,6 +18,7 @@ import (
 	retryabledns "github.com/projectdiscovery/retryabledns"
 	cryptoutil "github.com/projectdiscovery/utils/crypto"
 	"github.com/projectdiscovery/utils/env"
+	"github.com/remeh/sizedwaitgroup"
 
 	simpleflight "github.com/projectdiscovery/utils/memoize/simpleflight"
 	"github.com/zmap/zcrypto/encoding/asn1"
@@ -61,6 +62,7 @@ type Dialer struct {
 	// optimizations
 	group          simpleflight.Group[string]
 	l4HandlerCache gcache.Cache[string, *l4ConnHandler]
+	sg             *sizedwaitgroup.SizedWaitGroup
 }
 
 // NewDialer instance
@@ -183,6 +185,11 @@ func NewDialer(options Options) (*Dialer, error) {
 			value.Close()
 		}).
 		Build()
+
+	if options.MaxOpenConnections > 0 {
+		tmp := sizedwaitgroup.New(options.MaxOpenConnections)
+		dx.sg = &tmp
+	}
 	return dx, nil
 }
 

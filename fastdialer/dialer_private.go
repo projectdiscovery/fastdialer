@@ -108,12 +108,14 @@ func (d *Dialer) dial(ctx context.Context, opts *dialOptions) (conn net.Conn, er
 }
 
 // getLayer4Conn return a layer 4 connection for given address
-func (d *Dialer) getLayer4Conn(ctx context.Context, network, hostname string, port string, ips []string) (net.Conn, string, error) {
+func (d *Dialer) getLayer4Conn(ctx context.Context, network, hostname string, port string, ips []string) (conn net.Conn, ip string, err error) {
 	if hostname == "" || iputil.IsIP(hostname) || len(ips) == 1 {
 		// no need to use handler at all if given input is ip
 		// or only one ip is available
 		for _, ip := range ips {
+			d.acquire()
 			conn, err := d.simpleDialer.Dial(ctx, network, net.JoinHostPort(ip, port))
+			conn = d.releaseWithHook(conn)
 			if err == nil {
 				return conn, ip, nil
 			}
@@ -217,4 +219,30 @@ func (d *Dialer) escalateConnection(ctx context.Context, layer4Conn net.Conn, op
 		}
 	}
 	return conn, err
+}
+
+func (d *Dialer) acquire() {
+	if d.sg == nil {
+		return
+	}
+	d.sg.Add()
+}
+
+// trackConn adds
+func (d *Dialer) releaseWithHook(conn net.Conn) net.Conn {
+	if d.sg == nil {
+		return conn
+	}
+	if conn == nil {
+		d.sg.Done()
+		return nil
+	}
+	x := dialer.NetConnTrace{
+		Conn: conn,
+	}
+	x.CloseCallback = func() error {
+		d.sg.Done()
+		return nil
+	}
+	return &x
 }

@@ -59,7 +59,7 @@ func getDialHandler(ctx context.Context, fd *Dialer, hostname, network, port str
 	}
 
 	handlerOpts := L4HandlerOpts{
-		PoolSize: 3,
+		PoolSize: fd.options.MaxL4ConnsPrefetchSize,
 	}
 	// while creating new handler always check for preferred options from
 	// context
@@ -128,7 +128,11 @@ func (d *l4ConnHandler) dialAllParallel(ctx context.Context) error {
 			wg.Add(1)
 			go func(ip string) {
 				defer wg.Done()
+
+				d.fd.acquire() // no-op if max open connections is not set
 				conn, err := d.fd.simpleDialer.Dial(ctx, d.network, net.JoinHostPort(ip, d.port))
+				conn = d.fd.releaseWithHook(conn)
+
 				ch <- dialResult{conn, err, ip}
 				if err == nil {
 					alive = append(alive, ip)
@@ -173,7 +177,11 @@ func (d *l4ConnHandler) run(ctx context.Context) {
 			return
 		default:
 			// dial new conn and put it in buffered chan
+
+			d.fd.acquire() // no-op if max open connections is not set
 			conn, err := d.fd.simpleDialer.Dial(ctx, d.network, net.JoinHostPort(d.hostname, d.port))
+			conn = d.fd.releaseWithHook(conn)
+
 			d.poolingChan <- dialResult{conn, err, d.hostname}
 		}
 	}
