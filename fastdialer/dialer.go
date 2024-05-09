@@ -10,6 +10,7 @@ import (
 
 	"github.com/Mzack9999/gcache"
 	gounit "github.com/docker/go-units"
+	"github.com/projectdiscovery/fastdialer/fastdialer/dialer"
 	"github.com/projectdiscovery/fastdialer/fastdialer/ja3/impersonate"
 	"github.com/projectdiscovery/fastdialer/fastdialer/metafiles"
 	"github.com/projectdiscovery/hmap/store/hybrid"
@@ -21,7 +22,6 @@ import (
 	simpleflight "github.com/projectdiscovery/utils/memoize/simpleflight"
 	"github.com/zmap/zcrypto/encoding/asn1"
 	ztls "github.com/zmap/zcrypto/tls"
-	"golang.org/x/net/proxy"
 )
 
 // option to disable ztls fallback in case of handshake error
@@ -56,14 +56,12 @@ type Dialer struct {
 	hostsFileData *hybrid.HybridMap
 	dialerHistory *hybrid.HybridMap
 	dialerTLSData *hybrid.HybridMap
-	dialer        *net.Dialer
-	proxyDialer   *proxy.Dialer
+	simpleDialer  dialer.SimpleDialer
 	networkpolicy *networkpolicy.NetworkPolicy
 
 	// optimizations
 	group          simpleflight.Group[string]
 	l4HandlerCache gcache.Cache[string, *l4ConnHandler]
-	l4ConnCache    gcache.Cache[*l4ConnHandler, net.Conn]
 }
 
 // NewDialer instance
@@ -112,11 +110,11 @@ func NewDialer(options Options) (*Dialer, error) {
 		}
 	}
 
-	var dialer *net.Dialer
+	var netDialer *net.Dialer
 	if options.Dialer != nil {
-		dialer = options.Dialer
+		netDialer = options.Dialer
 	} else {
-		dialer = &net.Dialer{
+		netDialer = &net.Dialer{
 			Timeout:   options.DialerTimeout,
 			KeepAlive: options.DialerKeepAlive,
 			DualStack: true,
@@ -161,6 +159,10 @@ func NewDialer(options Options) (*Dialer, error) {
 	if err != nil {
 		return nil, err
 	}
+	if options.Dialer.Timeout == 0 {
+		// use defaults just in case if not set
+		options.Dialer.Timeout = DefaultOptions.DialerTimeout
+	}
 
 	return &Dialer{
 		dnsclient:     dnsclient,
@@ -169,8 +171,7 @@ func NewDialer(options Options) (*Dialer, error) {
 		hostsFileData: hostsFileData,
 		dialerHistory: dialerHistory,
 		dialerTLSData: dialerTLSData,
-		dialer:        dialer,
-		proxyDialer:   options.ProxyDialer,
+		simpleDialer:  dialer.NewSimpleDialer(netDialer, options.ProxyDialer, options.DialerTimeout),
 		options:       &options,
 		networkpolicy: np,
 	}, nil

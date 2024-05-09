@@ -27,8 +27,6 @@ type ConnWrapper interface {
 	DialZTLS(ctx context.Context, network, address string, config *ztls.Config) (net.Conn, error)
 	// DialTLSAndImpersonate connects to the address on the named network using TLS and impersonates with given data
 	DialTLSAndImpersonate(ctx context.Context, network, address string, config *tls.Config, strategy impersonate.Strategy, identify *impersonate.Identity) (net.Conn, error)
-	// WithProxyDialer dials with a proxy dialer. (does not suppport TLS or ZTLS)
-	WithProxyDialer(ctx context.Context, proxyDialer proxy.Dialer, network, address string) (net.Conn, error)
 }
 
 type connWrap struct {

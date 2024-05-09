@@ -122,7 +122,7 @@ func (d *l4ConnHandler) dialAllParallel(ctx context.Context, ips []string) error
 			wg.Add(1)
 			go func(ip string) {
 				defer wg.Done()
-				conn, err := d.fd.dialer.DialContext(ctx, d.network, net.JoinHostPort(ip, d.port))
+				conn, err := d.fd.simpleDialer.Dial(ctx, d.network, net.JoinHostPort(ip, d.port))
 				ch <- dialResult{conn, err}
 			}(ip)
 		}
@@ -162,7 +162,7 @@ func (d *l4ConnHandler) run(ctx context.Context) {
 			return
 		default:
 			// dial new conn and put it in buffered chan
-			conn, err := d.fd.dialer.DialContext(ctx, d.network, net.JoinHostPort(d.hostname, d.port))
+			conn, err := d.fd.simpleDialer.Dial(ctx, d.network, net.JoinHostPort(d.hostname, d.port))
 			d.poolingChan <- dialResult{conn, err}
 		}
 	}

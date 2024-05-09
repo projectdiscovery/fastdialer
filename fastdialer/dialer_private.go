@@ -112,7 +112,7 @@ func (d *Dialer) getLayer4Conn(ctx context.Context, network, hostname string, po
 	if hostname == "" || iputil.IsIP(hostname) {
 		// no need to use handler at all if given input is ip
 		for _, ip := range ips {
-			conn, err := d.dialer.DialContext(ctx, network, net.JoinHostPort(ip, port))
+			conn, err := d.simpleDialer.Dial(ctx, network, net.JoinHostPort(ip, port))
 			if err == nil {
 				return conn, ip, nil
 			}
@@ -192,12 +192,9 @@ func (d *Dialer) escalateConnection(ctx context.Context, layer4Conn net.Conn, op
 			ztlsconfigCopy.ServerName = opts.hostname
 		}
 		conn, err = dialWrap.DialZTLS(ctx, opts.network, hostPort, ztlsconfigCopy)
-
-	case d.proxyDialer != nil:
-		conn, err = dialWrap.WithProxyDialer(ctx, *d.proxyDialer, opts.network, hostPort)
-
 	default:
-		conn, err = d.dialer.DialContext(ctx, opts.network, hostPort)
+		// layer 4 connection are already established so just return it
+		conn = layer4Conn
 	}
 
 	if err == nil {

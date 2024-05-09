@@ -53,7 +53,7 @@ type Options struct {
 	DialerTimeout            time.Duration
 	DialerKeepAlive          time.Duration
 	Dialer                   *net.Dialer
-	ProxyDialer              *proxy.Dialer
+	ProxyDialer              proxy.Dialer
 	WithZTLS                 bool
 	SNIName                  string
 	OnBeforeDial             func(hostname, IP, port string)
