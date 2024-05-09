@@ -17,17 +17,9 @@ import (
 	"golang.org/x/net/proxy"
 )
 
-// SimpleDialer only supports dialing to a network address it does not support higher level protocols like TLS
-type SimpleDialer interface {
-	// Dial connects to the address on the named network.
-	Dial(ctx context.Context, network, address string) (net.Conn, error)
-}
-
-// DialWrapper is a interface that implements higher level logic for dialing
-// while taking a SimpleDialer as the base dialer
-type DialWrapper interface {
-	// Dial connects to the address on the named network.
-	Dial(ctx context.Context, network, address string) (net.Conn, error)
+// ConnWrapper is a interface that implements higher level logic for a simple net.Conn
+// like tls, ztls, proxy connections
+type ConnWrapper interface {
 	// DialTLS connects to the address on the named network using TLS.
 	// If ztlsFallback is true, it will fallback to ZTLS if the handshake fails.
 	DialTLS(ctx context.Context, network, address string, config *tls.Config, ztlsFallback bool) (net.Conn, error)
@@ -39,22 +31,17 @@ type DialWrapper interface {
 	WithProxyDialer(ctx context.Context, proxyDialer proxy.Dialer, network, address string) (net.Conn, error)
 }
 
-type dialerX struct {
-	nd *net.Dialer
+type connWrap struct {
+	nd net.Conn
 }
 
-func NewDialerX(nd *net.Dialer) DialWrapper {
-	return &dialerX{nd: nd}
-}
-
-// Dial connects to the address on the named network.
-func (d *dialerX) Dial(ctx context.Context, network, address string) (net.Conn, error) {
-	return d.nd.Dial(network, address)
+func NewConnWrap(nd net.Conn) ConnWrapper {
+	return &connWrap{nd: nd}
 }
 
 // DialTLS connects to the address on the named network using TLS.
 // If ztlsFallback is true, it will fallback to ZTLS if the handshake fails.
-func (d *dialerX) DialTLS(ctx context.Context, network, address string, config *tls.Config, ztlsFallback bool) (net.Conn, error) {
+func (d *connWrap) DialTLS(ctx context.Context, network, address string, config *tls.Config, ztlsFallback bool) (net.Conn, error) {
 	// fallback to ztls  in case of handshake error with chrome ciphers
 	// ztls fallback can either be disabled by setting env variable DISABLE_ZTLS_FALLBACK=true or by setting DisableZtlsFallback=true in options
 	if err != nil && !errors.Is(err, os.ErrDeadlineExceeded) && !(d.options.DisableZtlsFallback && disableZTLSFallback) {
@@ -82,7 +69,7 @@ func (d *dialerX) DialTLS(ctx context.Context, network, address string, config *
 }
 
 // DialTLSAndImpersonate connects to the address on the named network using TLS and impersonates with given data
-func (d *dialerX) DialTLSAndImpersonate(ctx context.Context, network, address string, config *tls.Config, strategy *impersonate.Strategy, identify *impersonate.Identity) (net.Conn, error) {
+func (d *connWrap) DialTLSAndImpersonate(ctx context.Context, network, address string, config *tls.Config, strategy impersonate.Strategy, identify *impersonate.Identity) (net.Conn, error) {
 	// clone existing tls config
 	uTLSConfig := &utls.Config{
 		InsecureSkipVerify: tlsconfigCopy.InsecureSkipVerify,
@@ -108,11 +95,11 @@ func (d *dialerX) DialTLSAndImpersonate(ctx context.Context, network, address st
 }
 
 // DialZTLS connects to the address on the named network using ZTLS.
-func (d *dialerX) DialZTLS(ctx context.Context, network, address string, config *ztls.Config) (net.Conn, error) {
+func (d *connWrap) DialZTLS(ctx context.Context, network, address string, config *ztls.Config) (net.Conn, error) {
 }
 
 // WithProxyDialer dials with a proxy dialer. (does not suppport TLS or ZTLS)
-func (d *dialerX) WithProxyDialer(ctx context.Context, proxyDialer proxy.Dialer, network, address string) (net.Conn, error) {
+func (d *connWrap) WithProxyDialer(ctx context.Context, proxyDialer proxy.Dialer, network, address string) (net.Conn, error) {
 	dialer := *d.proxyDialer
 	// timeout not working for socks5 proxy dialer
 	// tying to handle it here

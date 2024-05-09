@@ -10,7 +10,6 @@ import (
 
 	"github.com/Mzack9999/gcache"
 	gounit "github.com/docker/go-units"
-	"github.com/projectdiscovery/fastdialer/fastdialer/dialer"
 	"github.com/projectdiscovery/fastdialer/fastdialer/ja3/impersonate"
 	"github.com/projectdiscovery/fastdialer/fastdialer/metafiles"
 	"github.com/projectdiscovery/hmap/store/hybrid"
@@ -58,13 +57,13 @@ type Dialer struct {
 	dialerHistory *hybrid.HybridMap
 	dialerTLSData *hybrid.HybridMap
 	dialer        *net.Dialer
-	dialerX       dialer.DialWrapper
 	proxyDialer   *proxy.Dialer
 	networkpolicy *networkpolicy.NetworkPolicy
 
 	// optimizations
-	group     simpleflight.Group[string]
-	ConnCache gcache.Cache[string, *dialHandler]
+	group          simpleflight.Group[string]
+	l4HandlerCache gcache.Cache[string, *l4ConnHandler]
+	l4ConnCache    gcache.Cache[*l4ConnHandler, net.Conn]
 }
 
 // NewDialer instance
