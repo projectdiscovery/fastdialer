@@ -93,7 +93,7 @@ func (d *Dialer) dial(ctx context.Context, opts *dialOptions) (conn net.Conn, er
 	}
 
 	// escalate it to required layer using dialIP
-	return d.escalateConnection(ctx, nativeConn, &ipDialOpts{
+	return d.escalateConnection(ctx, nativeConn, &escalateLayerOpts{
 		hostname:            hostname,
 		ip:                  ip,
 		port:                port,
@@ -109,8 +109,9 @@ func (d *Dialer) dial(ctx context.Context, opts *dialOptions) (conn net.Conn, er
 
 // getLayer4Conn return a layer 4 connection for given address
 func (d *Dialer) getLayer4Conn(ctx context.Context, network, hostname string, port string, ips []string) (net.Conn, string, error) {
-	if hostname == "" || iputil.IsIP(hostname) {
+	if hostname == "" || iputil.IsIP(hostname) || len(ips) == 1 {
 		// no need to use handler at all if given input is ip
+		// or only one ip is available
 		for _, ip := range ips {
 			conn, err := d.simpleDialer.Dial(ctx, network, net.JoinHostPort(ip, port))
 			if err == nil {
@@ -121,23 +122,16 @@ func (d *Dialer) getLayer4Conn(ctx context.Context, network, hostname string, po
 	}
 
 	// == implement handler here ====
-	return nil, "", nil
-	// // if this is a domain then use handler to perform singleflight on first call
-	// // and use predective prefetching of tcp layer calls
-	// dh := getDialHandler(ctx, d, hostname, port)
-	// // firstFlight happens parallelly
-	// if dh.IsFirstFlight() {
-	// 	nativeConn, err := dh.dialFirst(ctx, ips)
-	// 	if err != nil {
-	// 		return nil, "", err
-	// 	}
-	// 	return nativeConn, "", nil
-	// }
-
-	// return dh.getConn(ctx, ips)
+	//  this will use a cached version or create new and cache it
+	l4Handler, err := getDialHandler(ctx, d, hostname, network, port, ips)
+	if err != nil {
+		return nil, "", err
+	}
+	return l4Handler.getConn(ctx)
 }
 
-type ipDialOpts struct {
+// escalateLayerOpts contains options for escalating layer 4 connection
+type escalateLayerOpts struct {
 	hostname            string
 	ip                  string
 	port                string
@@ -151,7 +145,7 @@ type ipDialOpts struct {
 }
 
 // escalateConnection escalates given layer4 connection to required layer
-func (d *Dialer) escalateConnection(ctx context.Context, layer4Conn net.Conn, opts *ipDialOpts) (conn net.Conn, err error) {
+func (d *Dialer) escalateConnection(ctx context.Context, layer4Conn net.Conn, opts *escalateLayerOpts) (conn net.Conn, err error) {
 	// hostPort
 	hostPort := net.JoinHostPort(opts.ip, opts.port)
 	// wrap the connection
@@ -174,7 +168,7 @@ func (d *Dialer) escalateConnection(ctx context.Context, layer4Conn net.Conn, op
 		// impersonation by using ciphers
 		if opts.imperStrategy == impersonate.None {
 			// no impersonation with ztls fallback
-			conn, err = dialWrap.DialTLS(ctx, opts.network, hostPort, tlsconfigCopy, true)
+			conn, err = dialWrap.DialTLS(ctx, opts.network, hostPort, tlsconfigCopy, !(d.options.DisableZtlsFallback || disableZTLSFallback))
 		} else {
 			// impersonation
 			conn, err = dialWrap.DialTLSAndImpersonate(ctx, opts.network, hostPort, tlsconfigCopy, opts.imperStrategy, opts.impersonateIdentity)

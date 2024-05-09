@@ -27,7 +27,7 @@ import (
 // option to disable ztls fallback in case of handshake error
 // reads from env variable DISABLE_ZTLS_FALLBACK
 var (
-	disableZTLSFallback = false
+	disableZTLSFallback = env.GetEnvOrDefault("DISABLE_ZTLS_FALLBACK", false)
 	MaxDNSCacheSize     int64
 	MaxDNSItems         = 1024
 )
@@ -35,7 +35,6 @@ var (
 func init() {
 	// enable permissive parsing for ztls, so that it can allow permissive parsing for X509 certificates
 	asn1.AllowPermissiveParsing = true
-	disableZTLSFallback = env.GetEnvOrDefault("DISABLE_ZTLS_FALLBACK", false)
 	maxCacheSize := env.GetEnvOrDefault("MAX_DNS_CACHE_SIZE", "10mb")
 	maxDnsCacheSize, err := gounit.FromHumanSize(maxCacheSize)
 	if err != nil {
@@ -164,7 +163,7 @@ func NewDialer(options Options) (*Dialer, error) {
 		options.Dialer.Timeout = DefaultOptions.DialerTimeout
 	}
 
-	return &Dialer{
+	dx := &Dialer{
 		dnsclient:     dnsclient,
 		mDnsCache:     dnsCache,
 		hmDnsCache:    hmDnsCache,
@@ -174,7 +173,17 @@ func NewDialer(options Options) (*Dialer, error) {
 		simpleDialer:  dialer.NewSimpleDialer(netDialer, options.ProxyDialer, options.DialerTimeout),
 		options:       &options,
 		networkpolicy: np,
-	}, nil
+		group:         simpleflight.Group[string]{},
+	}
+	dx.l4HandlerCache = gcache.New[string, *l4ConnHandler](options.MaxL4HandlerPoolSize).
+		LRU().
+		Expiration(options.L4CacheExpiration).
+		EvictedFunc(func(key string, value *l4ConnHandler) {
+			dx.group.Forget(key)
+			value.Close()
+		}).
+		Build()
+	return dx, nil
 }
 
 // Dial function compatible with net/http
@@ -370,11 +379,11 @@ func (d *Dialer) GetDNSData(hostname string) (*retryabledns.DNSData, error) {
 			}
 
 			if d.hmDnsCache != nil {
-				b, _ := data.Marshal()
+				b, err := data.Marshal()
 				if err != nil {
 					return nil, err
 				}
-				err := d.hmDnsCache.Set(hostname, b)
+				err = d.hmDnsCache.Set(hostname, b)
 				if err != nil {
 					return nil, err
 				}
@@ -399,6 +408,12 @@ func (d *Dialer) Close() {
 	}
 	if d.options.WithTLSData {
 		d.dialerTLSData.Close()
+	}
+	if d.l4HandlerCache != nil {
+		d.l4HandlerCache.Purge()
+	}
+	if d.dnsclient != nil {
+		d.dnsclient.Close()
 	}
 	// donot close hosts file as it is meant to be shared
 }

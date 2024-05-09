@@ -8,7 +8,7 @@ import (
 	"os"
 
 	"github.com/projectdiscovery/fastdialer/fastdialer/ja3/impersonate"
-	errorutil "github.com/projectdiscovery/utils/errors"
+	ctxutil "github.com/projectdiscovery/utils/context"
 	ptrutil "github.com/projectdiscovery/utils/ptr"
 	utls "github.com/refraction-networking/utls"
 	ztls "github.com/zmap/zcrypto/tls"
@@ -40,6 +40,9 @@ func NewConnWrap(nd net.Conn) ConnWrapper {
 // DialTLS connects to the address on the named network using TLS.
 // If ztlsFallback is true, it will fallback to ZTLS if the handshake fails.
 func (d *connWrap) DialTLS(ctx context.Context, network, address string, config *tls.Config, ztlsFallback bool) (net.Conn, error) {
+	if config == nil {
+		config = getDefaultTLSConfig()
+	}
 	// todo: check if config verification is needed
 	tlsConn := tls.Client(d.nd, config)
 	err := tlsConn.HandshakeContext(ctx)
@@ -47,60 +50,73 @@ func (d *connWrap) DialTLS(ctx context.Context, network, address string, config 
 		return tlsConn, nil
 	}
 	// fallback with chrome ciphers by default
-
+	ztlsConfig := AsZTLSConfig(config)
+	ztlsConfig.CipherSuites = ztls.ChromeCiphers
+	return d.DialZTLS(ctx, network, address, ztlsConfig)
 }
 
 // DialTLSAndImpersonate connects to the address on the named network using TLS and impersonates with given data
 func (d *connWrap) DialTLSAndImpersonate(ctx context.Context, network, address string, config *tls.Config, strategy impersonate.Strategy, identify *impersonate.Identity) (net.Conn, error) {
 	// clone existing tls config
 	uTLSConfig := &utls.Config{
-		InsecureSkipVerify: tlsconfigCopy.InsecureSkipVerify,
-		ServerName:         tlsconfigCopy.ServerName,
-		MinVersion:         tlsconfigCopy.MinVersion,
-		MaxVersion:         tlsconfigCopy.MaxVersion,
-		CipherSuites:       tlsconfigCopy.CipherSuites,
+		InsecureSkipVerify: config.InsecureSkipVerify,
+		ServerName:         config.ServerName,
+		MinVersion:         config.MinVersion,
+		MaxVersion:         config.MaxVersion,
+		CipherSuites:       config.CipherSuites,
 	}
 
 	var uTLSConn *utls.UConn
-	if opts.imperStrategy == impersonate.Random {
-		uTLSConn = utls.UClient(nativeConn, uTLSConfig, utls.HelloRandomized)
-	} else if opts.imperStrategy == impersonate.Custom {
-		uTLSConn = utls.UClient(nativeConn, uTLSConfig, utls.HelloCustom)
-		clientHelloSpec := utls.ClientHelloSpec(ptrutil.Safe(opts.impersonateIdentity))
+	if strategy == impersonate.Random {
+		uTLSConn = utls.UClient(d.nd, uTLSConfig, utls.HelloRandomized)
+	} else if strategy == impersonate.Custom {
+		uTLSConn = utls.UClient(d.nd, uTLSConfig, utls.HelloCustom)
+		clientHelloSpec := utls.ClientHelloSpec(ptrutil.Safe(identify))
 		if err := uTLSConn.ApplyPreset(&clientHelloSpec); err != nil {
 			return nil, err
 		}
 	}
-	if err := uTLSConn.Handshake(); err != nil {
+	if err := uTLSConn.HandshakeContext(ctx); err != nil {
 		return nil, err
 	}
+	return uTLSConn, nil
 }
 
 // DialZTLS connects to the address on the named network using ZTLS.
 func (d *connWrap) DialZTLS(ctx context.Context, network, address string, config *ztls.Config) (net.Conn, error) {
-	ztlsConn := ztls.Client(d.nd, config)
-	// use execWithReturn to inject context
-	if err := ztlsConn.Handshake(); err != nil {
-		return nil, err
+	if config == nil {
+		config = AsZTLSConfig(getDefaultTLSConfig())
+		config.CipherSuites = ztls.ChromeCiphers // for reliable fallback
 	}
 
-	var ztlsconfigCopy *ztls.Config
-	if opts.shouldUseZTLS {
-		ztlsconfigCopy = opts.ztlsconfig.Clone()
-	} else {
-		if opts.tlsconfig == nil {
-			opts.tlsconfig = &tls.Config{
-				Renegotiation:      tls.RenegotiateOnceAsClient,
-				MinVersion:         tls.VersionTLS10,
-				InsecureSkipVerify: true,
-			}
+	ztlsConn := ztls.Client(d.nd, config)
+	return ctxutil.ExecFuncWithTwoReturns(ctx, func() (net.Conn, error) {
+		if err := ztlsConn.Handshake(); err != nil {
+			return nil, err
 		}
-		ztlsconfigCopy, err = AsZTLSConfig(opts.tlsconfig)
-		if err != nil {
-			return nil, errorutil.NewWithErr(err).Msgf("could not convert tls config to ztls config")
-		}
+		return ztlsConn, nil
+	})
+}
+
+// getDefaultTLSConfig returns a default tls config
+func getDefaultTLSConfig() *tls.Config {
+	return &tls.Config{
+		Renegotiation:      tls.RenegotiateOnceAsClient,
+		MinVersion:         tls.VersionTLS10,
+		InsecureSkipVerify: true,
 	}
-	ztlsconfigCopy.CipherSuites = ztls.ChromeCiphers
-	conn, err = ztls.DialWithDialer(d.dialer, opts.network, hostPort, ztlsconfigCopy)
-	err = errorutil.WrapfWithNil(err, "ztls fallback failed")
+}
+
+func AsZTLSConfig(tlsConfig *tls.Config) *ztls.Config {
+	ztlsConfig := &ztls.Config{
+		NextProtos:             tlsConfig.NextProtos,
+		ServerName:             tlsConfig.ServerName,
+		ClientAuth:             ztls.ClientAuthType(tlsConfig.ClientAuth),
+		InsecureSkipVerify:     tlsConfig.InsecureSkipVerify,
+		CipherSuites:           tlsConfig.CipherSuites,
+		SessionTicketsDisabled: tlsConfig.SessionTicketsDisabled,
+		MinVersion:             tlsConfig.MinVersion,
+		MaxVersion:             tlsConfig.MaxVersion,
+	}
+	return ztlsConfig
 }
