@@ -3,6 +3,7 @@ package fastdialer
 import (
 	"crypto/tls"
 
+	"github.com/projectdiscovery/hmap/store/hybrid"
 	ztls "github.com/zmap/zcrypto/tls"
 	"golang.org/x/net/idna"
 )
@@ -49,4 +50,13 @@ func IsTLS13(config interface{}) bool {
 func asAscii(hostname string) string {
 	hostnameAscii, _ := idna.ToASCII(hostname)
 	return hostnameAscii
+}
+
+func getHMAPDBType(options Options) hybrid.DBType {
+	switch options.DiskDbType {
+	case Pogreb:
+		return hybrid.PogrebDB
+	default:
+		return hybrid.LevelDB
+	}
 }
