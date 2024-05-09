@@ -19,6 +19,7 @@ import (
 	cryptoutil "github.com/projectdiscovery/utils/crypto"
 	"github.com/projectdiscovery/utils/env"
 
+	simpleflight "github.com/projectdiscovery/utils/memoize/simpleflight"
 	"github.com/zmap/zcrypto/encoding/asn1"
 	ztls "github.com/zmap/zcrypto/tls"
 	"golang.org/x/net/proxy"
@@ -57,9 +58,13 @@ type Dialer struct {
 	dialerHistory *hybrid.HybridMap
 	dialerTLSData *hybrid.HybridMap
 	dialer        *net.Dialer
-	dialerX       dialer.DialerX
+	dialerX       dialer.DialWrapper
 	proxyDialer   *proxy.Dialer
 	networkpolicy *networkpolicy.NetworkPolicy
+
+	// optimizations
+	group     simpleflight.Group[string]
+	ConnCache gcache.Cache[string, *dialHandler]
 }
 
 // NewDialer instance
@@ -174,8 +179,16 @@ func NewDialer(options Options) (*Dialer, error) {
 
 // Dial function compatible with net/http
 func (d *Dialer) Dial(ctx context.Context, network, address string) (conn net.Conn, err error) {
-	conn, err = d.dial(ctx, network, address, false, false, nil, nil, impersonate.None, nil)
-	return
+	return d.dial(ctx, &dialOptions{
+		network:             network,
+		address:             address,
+		shouldUseTLS:        false,
+		shouldUseZTLS:       false,
+		tlsconfig:           nil,
+		ztlsconfig:          nil,
+		impersonateStrategy: impersonate.None,
+		impersonateIdentity: nil,
+	})
 }
 
 // DialTLS with encrypted connection
@@ -194,14 +207,30 @@ func (d *Dialer) DialZTLS(ctx context.Context, network, address string) (conn ne
 
 // DialTLS with encrypted connection
 func (d *Dialer) DialTLSWithConfig(ctx context.Context, network, address string, config *tls.Config) (conn net.Conn, err error) {
-	conn, err = d.dial(ctx, network, address, true, false, config, nil, impersonate.None, nil)
-	return
+	return d.dial(ctx, &dialOptions{
+		network:             network,
+		address:             address,
+		shouldUseTLS:        true,
+		shouldUseZTLS:       false,
+		tlsconfig:           config,
+		ztlsconfig:          nil,
+		impersonateStrategy: impersonate.None,
+		impersonateIdentity: nil,
+	})
 }
 
 // DialTLSWithConfigImpersonate dials tls with impersonation
 func (d *Dialer) DialTLSWithConfigImpersonate(ctx context.Context, network, address string, config *tls.Config, impersonate impersonate.Strategy, identity *impersonate.Identity) (conn net.Conn, err error) {
-	conn, err = d.dial(ctx, network, address, true, false, config, nil, impersonate, identity)
-	return
+	return d.dial(ctx, &dialOptions{
+		network:             network,
+		address:             address,
+		shouldUseTLS:        true,
+		shouldUseZTLS:       false,
+		tlsconfig:           config,
+		ztlsconfig:          nil,
+		impersonateStrategy: impersonate,
+		impersonateIdentity: identity,
+	})
 }
 
 // DialZTLSWithConfig dials ztls with config
@@ -212,9 +241,27 @@ func (d *Dialer) DialZTLSWithConfig(ctx context.Context, network, address string
 		if err != nil {
 			return nil, err
 		}
-		return d.dial(ctx, network, address, true, false, stdTLSConfig, nil, impersonate.None, nil)
+		return d.dial(ctx, &dialOptions{
+			network:             network,
+			address:             address,
+			shouldUseTLS:        true,
+			shouldUseZTLS:       false,
+			tlsconfig:           stdTLSConfig,
+			ztlsconfig:          nil,
+			impersonateStrategy: impersonate.None,
+			impersonateIdentity: nil,
+		})
 	}
-	return d.dial(ctx, network, address, false, true, nil, config, impersonate.None, nil)
+	return d.dial(ctx, &dialOptions{
+		network:             network,
+		address:             address,
+		shouldUseTLS:        false,
+		shouldUseZTLS:       true,
+		tlsconfig:           nil,
+		ztlsconfig:          config,
+		impersonateStrategy: impersonate.None,
+		impersonateIdentity: nil,
+	})
 }
 
 // GetDialedIP returns the ip dialed by the HTTP client

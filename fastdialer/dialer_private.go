@@ -7,7 +7,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"net"
-	"strings"
 
 	"github.com/projectdiscovery/fastdialer/fastdialer/ja3/impersonate"
 	cryptoutil "github.com/projectdiscovery/utils/crypto"
@@ -15,7 +14,18 @@ import (
 	ztls "github.com/zmap/zcrypto/tls"
 )
 
-func (d *Dialer) dial(ctx context.Context, network, address string, shouldUseTLS, shouldUseZTLS bool, tlsconfig *tls.Config, ztlsconfig *ztls.Config, impersonateStrategy impersonate.Strategy, impersonateIdentity *impersonate.Identity) (conn net.Conn, err error) {
+type dialOptions struct {
+	network             string
+	address             string
+	shouldUseTLS        bool
+	shouldUseZTLS       bool
+	tlsconfig           *tls.Config
+	ztlsconfig          *ztls.Config
+	impersonateStrategy impersonate.Strategy
+	impersonateIdentity *impersonate.Identity
+}
+
+func (d *Dialer) dial(ctx context.Context, opts *dialOptions) (conn net.Conn, err error) {
 	defer func() {
 		if r := recover(); r != nil {
 			err = fmt.Errorf("panic: %v", r)
@@ -23,36 +33,10 @@ func (d *Dialer) dial(ctx context.Context, network, address string, shouldUseTLS
 	}()
 	var hostname, port, fixedIP string
 
-	if strings.HasPrefix(address, "[") {
-		closeBracketIndex := strings.Index(address, "]")
-		if closeBracketIndex == -1 {
-			return nil, MalformedIP6Error
-		}
-		hostname = address[:closeBracketIndex+1]
-		if len(address) < closeBracketIndex+2 {
-			return nil, NoPortSpecifiedError
-		}
-		port = address[closeBracketIndex+2:]
-	} else {
-		addressParts := strings.SplitN(address, ":", 3)
-		numberOfParts := len(addressParts)
-
-		if numberOfParts >= 2 {
-			// ip|host:port
-			hostname = addressParts[0]
-			port = addressParts[1]
-			// ip|host:port:ip => curl --resolve ip:port:ip
-			if numberOfParts > 2 {
-				fixedIP = addressParts[2]
-			}
-			// check if the ip is within the context
-			if ctxIP := ctx.Value(IP); ctxIP != nil {
-				fixedIP = fmt.Sprint(ctxIP)
-			}
-		} else {
-			// no port => error
-			return nil, NoPortSpecifiedError
-		}
+	// parse the address
+	hostname, port, fixedIP, err = parseAddress(ctx, opts.address)
+	if err != nil {
+		return nil, err
 	}
 
 	// check if data is in cache
@@ -70,55 +54,127 @@ func (d *Dialer) dial(ctx context.Context, network, address string, shouldUseTLS
 		return nil, NoAddressFoundError
 	}
 
-	var numInvalidIPS int
-	var IPS []string
+	var tmp []string
 	// use fixed ip as first
 	if fixedIP != "" {
-		IPS = append(IPS, fixedIP)
+		tmp = append(tmp, fixedIP)
 	} else {
-		IPS = append(IPS, append(data.A, data.AAAA...)...)
+		tmp = append(tmp, append(data.A, data.AAAA...)...)
 	}
 
-	// Dial to the IPs finally.
-	for _, ip := range IPS {
+	// remove all ips blocked by network policy
+	IPS := []string{}
+	for _, ip := range tmp {
 		// check if we have allow/deny list
 		if !d.networkpolicy.Validate(ip) {
 			if d.options.OnInvalidTarget != nil {
 				d.options.OnInvalidTarget(hostname, ip, port)
 			}
-			numInvalidIPS++
 			continue
 		}
 		if d.options.OnBeforeDial != nil {
 			d.options.OnBeforeDial(hostname, ip, port)
 		}
-		conn, err = d.dialIP(ctx, &ipDialOpts{
-			hostname:            hostname,
-			ip:                  ip,
-			port:                port,
-			network:             network,
-			shouldUseTLS:        shouldUseTLS,
-			shouldUseZTLS:       shouldUseZTLS,
-			imperStrategy:       impersonateStrategy,
-			impersonateIdentity: impersonateIdentity,
-			tlsconfig:           tlsconfig,
-			ztlsconfig:          ztlsconfig,
-		})
-		break
+		IPS = append(IPS, ip)
 	}
 
-	if conn == nil {
-		if numInvalidIPS == len(IPS) {
-			return nil, NoAddressAllowedError
+	if len(IPS) == 0 {
+		return nil, NoAddressAllowedError
+	}
+
+	defer func() {
+		if conn == nil {
+			err = CouldNotConnectError
 		}
-		return nil, CouldNotConnectError
+	}()
+
+	if hostname == "" || iputil.IsIP(hostname) {
+		// no need to use handler at all if given input is ip
+		for _, ip := range IPS {
+			conn, err = d.dialIP(ctx, &ipDialOpts{
+				hostname:            hostname,
+				ip:                  ip,
+				port:                port,
+				network:             opts.network,
+				shouldUseTLS:        opts.shouldUseTLS,
+				shouldUseZTLS:       opts.shouldUseZTLS,
+				imperStrategy:       opts.impersonateStrategy,
+				impersonateIdentity: opts.impersonateIdentity,
+				tlsconfig:           opts.tlsconfig,
+				ztlsconfig:          opts.ztlsconfig,
+			})
+			if err == nil {
+				return
+			}
+		}
+		return
 	}
 
-	if err != nil {
-		return nil, err
-	}
+	// if this is a domain then use handler to perform singleflight on first call
+	// and use predective prefetching of tcp layer calls
+	dh := newDialHandler(ctx, d, hostname, port, IPS)
+	return dh.getConn(ctx)
 
-	return
+	// // dialQueue contains info about the ips to dial
+	// dialQueue := []*ipDialOpts{}
+
+	// for _, ip := range IPS {
+
+	// 	dialQueue = append(dialQueue, &ipDialOpts{
+	// 		hostname:            hostname,
+	// 		ip:                  ip,
+	// 		port:                port,
+	// 		network:             network,
+	// 		shouldUseTLS:        shouldUseTLS,
+	// 		shouldUseZTLS:       shouldUseZTLS,
+	// 		imperStrategy:       impersonateStrategy,
+	// 		impersonateIdentity: impersonateIdentity,
+	// 		tlsconfig:           tlsconfig,
+	// 		ztlsconfig:          ztlsconfig,
+	// 	})
+	// }
+
+	// // check if handler exists in cache
+	// if h, err := d.ConnCache.GetIFPresent(address); !errors.Is(err, gcache.KeyNotFoundError) && h != nil {
+	// 	return h.getConn(ctx, dialQueue[0])
+	// }
+
+	// select {
+	// case <-ctx.Done():
+	// 	return nil, ctx.Err()
+
+	// case <-d.group.DoChan(address, func() (interface{}, error) {
+	// 	// Dial to the IPs finally.
+	// 	for _, ip := range IPS {
+	// 		// check if we have allow/deny list
+	// 		if !d.networkpolicy.Validate(ip) {
+	// 			if d.options.OnInvalidTarget != nil {
+	// 				d.options.OnInvalidTarget(hostname, ip, port)
+	// 			}
+	// 			numInvalidIPS++
+	// 			continue
+	// 		}
+	// 		if d.options.OnBeforeDial != nil {
+	// 			d.options.OnBeforeDial(hostname, ip, port)
+	// 		}
+	// 		conn, err = d.dialIP(ctx, &ipDialOpts{
+	// 			hostname:            hostname,
+	// 			ip:                  ip,
+	// 			port:                port,
+	// 			network:             network,
+	// 			shouldUseTLS:        shouldUseTLS,
+	// 			shouldUseZTLS:       shouldUseZTLS,
+	// 			imperStrategy:       impersonateStrategy,
+	// 			impersonateIdentity: impersonateIdentity,
+	// 			tlsconfig:           tlsconfig,
+	// 			ztlsconfig:          ztlsconfig,
+	// 		})
+	// 	}
+	// 	return conn, err
+	// }):
+
+	// }
+
 }
 
 type ipDialOpts struct {

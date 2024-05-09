@@ -17,7 +17,15 @@ import (
 	"golang.org/x/net/proxy"
 )
 
-type DialerX interface {
+// SimpleDialer only supports dialing to a network address it does not support higher level protocols like TLS
+type SimpleDialer interface {
+	// Dial connects to the address on the named network.
+	Dial(ctx context.Context, network, address string) (net.Conn, error)
+}
+
+// DialWrapper is a interface that implements higher level logic for dialing
+// while taking a SimpleDialer as the base dialer
+type DialWrapper interface {
 	// Dial connects to the address on the named network.
 	Dial(ctx context.Context, network, address string) (net.Conn, error)
 	// DialTLS connects to the address on the named network using TLS.
@@ -35,7 +43,7 @@ type dialerX struct {
 	nd *net.Dialer
 }
 
-func NewDialerX(nd *net.Dialer) DialerX {
+func NewDialerX(nd *net.Dialer) DialWrapper {
 	return &dialerX{nd: nd}
 }
 

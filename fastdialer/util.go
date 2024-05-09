@@ -1,7 +1,10 @@
 package fastdialer
 
 import (
+	"context"
 	"crypto/tls"
+	"fmt"
+	"strings"
 
 	"github.com/projectdiscovery/hmap/store/hybrid"
 	ztls "github.com/zmap/zcrypto/tls"
@@ -59,4 +62,40 @@ func getHMAPDBType(options Options) hybrid.DBType {
 	default:
 		return hybrid.LevelDB
 	}
+}
+
+// parseAddress parses the address and returns the hostname, port and fixedIP
+func parseAddress(ctx context.Context, address string) (hostname, port, fixedIP string, err error) {
+	if strings.HasPrefix(address, "[") {
+		closeBracketIndex := strings.Index(address, "]")
+		if closeBracketIndex == -1 {
+			return "", "", "", MalformedIP6Error
+		}
+		hostname = address[:closeBracketIndex+1]
+		if len(address) < closeBracketIndex+2 {
+			return "", "", "", NoPortSpecifiedError
+		}
+		port = address[closeBracketIndex+2:]
+	} else {
+		addressParts := strings.SplitN(address, ":", 3)
+		numberOfParts := len(addressParts)
+
+		if numberOfParts >= 2 {
+			// ip|host:port
+			hostname = addressParts[0]
+			port = addressParts[1]
+			// ip|host:port:ip => curl --resolve ip:port:ip
+			if numberOfParts > 2 {
+				fixedIP = addressParts[2]
+			}
+			// check if the ip is within the context
+			if ctxIP := ctx.Value(IP); ctxIP != nil {
+				fixedIP = fmt.Sprint(ctxIP)
+			}
+		} else {
+			// no port => error
+			return "", "", "", NoPortSpecifiedError
+		}
+	}
+	return
 }
