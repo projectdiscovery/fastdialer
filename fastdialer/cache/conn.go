@@ -2,12 +2,13 @@ package cache
 
 import (
 	"sync"
-	"errors"
+
+	"github.com/projectdiscovery/utils/errkit"
 )
 
 var (
 	// ErrNoItemsInBag is returned when no items are in the bag
-	ErrNoItemsInBag = errors.New("no items in bag")
+	ErrNoItemsInBag = errkit.New("no items in bag")
 )
 
 // Closer is an interface implemented by types that can be closed
@@ -20,8 +21,8 @@ type Closer interface {
 // when bag is full it closes any new items when added
 // instead of storing them
 type Bag[T Closer] struct {
-	items []T
-	mu sync.Mutex
+	items   []T
+	mu      sync.Mutex
 	maxSize int
 }
 
@@ -31,7 +32,7 @@ func NewBag[T Closer](maxSize int) *Bag[T] {
 		panic("maxSize cannot be 0")
 	}
 	return &Bag[T]{
-		mu: sync.Mutex{},
+		mu:      sync.Mutex{},
 		maxSize: maxSize,
 	}
 }

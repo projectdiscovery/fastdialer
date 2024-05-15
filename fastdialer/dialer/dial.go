@@ -3,12 +3,12 @@ package dialer
 import (
 	"context"
 	"crypto/tls"
-	"errors"
 	"net"
 	"os"
 
 	"github.com/projectdiscovery/fastdialer/fastdialer/ja3/impersonate"
 	ctxutil "github.com/projectdiscovery/utils/context"
+	"github.com/projectdiscovery/utils/errkit"
 	ptrutil "github.com/projectdiscovery/utils/ptr"
 	utls "github.com/refraction-networking/utls"
 	ztls "github.com/zmap/zcrypto/tls"
@@ -50,7 +50,7 @@ func (d *connWrap) DialTLS(ctx context.Context, network, address string, config 
 	// todo: check if config verification is needed
 	tlsConn := tls.Client(d.nd, config)
 	err := tlsConn.HandshakeContext(ctx)
-	if err == nil || errors.Is(err, os.ErrDeadlineExceeded) || !ztlsFallback {
+	if err == nil || errkit.Is(err, os.ErrDeadlineExceeded) || !ztlsFallback {
 		return tlsConn, nil
 	}
 	// fallback with chrome ciphers by default

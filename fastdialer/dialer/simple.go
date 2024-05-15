@@ -2,11 +2,11 @@ package dialer
 
 import (
 	"context"
-	"errors"
 	"net"
 	"time"
 
 	ctxUtil "github.com/projectdiscovery/utils/context"
+	"github.com/projectdiscovery/utils/errkit"
 	"golang.org/x/net/proxy"
 )
 
@@ -36,7 +36,7 @@ func (d *simpleDialer) Dial(ctx context.Context, network, address string) (net.C
 		return nil, ctx.Err()
 	}
 	if d.pd != nil {
-		ctx, cancel := context.WithTimeoutCause(ctx, d.timeout, errors.New("dialer timeout"))
+		ctx, cancel := context.WithTimeoutCause(ctx, d.timeout, errkit.New("dialer timeout"))
 		defer cancel()
 		return ctxUtil.ExecFuncWithTwoReturns(ctx, func() (net.Conn, error) {
 			if ctx.Err() != nil {

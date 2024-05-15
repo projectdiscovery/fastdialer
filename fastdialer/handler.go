@@ -7,8 +7,8 @@ import (
 	"sync/atomic"
 
 	"github.com/Mzack9999/gcache"
-	"github.com/pkg/errors"
 	"github.com/projectdiscovery/fastdialer/fastdialer/cache"
+	"github.com/projectdiscovery/utils/errkit"
 	sliceutil "github.com/projectdiscovery/utils/slice"
 	"go.uber.org/multierr"
 )
@@ -50,7 +50,7 @@ type l4ConnHandler struct {
 	network string
 	// ips to dial
 	ips []string
-	// bag of connections 
+	// bag of connections
 	bag *cache.Bag[*dialResult]
 	// permaError is a permanent error for this handler
 	// this only happens when all ips:[port] are dead or unreachable
@@ -66,7 +66,7 @@ func (fd *Dialer) getDialHandler(ctx context.Context, hostname, network, port st
 	}
 	key := network + ":" + hostname + ":" + port
 	// if handler already exists for this address, return it no need to create a new one
-	if h, err := fd.l4HandlerCache.GetIFPresent(key); !errors.Is(err, gcache.KeyNotFoundError) && h != nil {
+	if h, err := fd.l4HandlerCache.GetIFPresent(key); !errkit.Is(err, gcache.KeyNotFoundError) && h != nil {
 		return h, nil
 	}
 
@@ -74,7 +74,7 @@ func (fd *Dialer) getDialHandler(ctx context.Context, hostname, network, port st
 	defer fd.m.Unlock()
 
 	// check again if handler was already created by another goroutine
-	if h, err := fd.l4HandlerCache.GetIFPresent(key); !errors.Is(err, gcache.KeyNotFoundError) && h != nil {
+	if h, err := fd.l4HandlerCache.GetIFPresent(key); !errkit.Is(err, gcache.KeyNotFoundError) && h != nil {
 		return h, nil
 	}
 
@@ -266,10 +266,9 @@ func (d *l4ConnHandler) getConn(ctx context.Context) (net.Conn, string, error) {
 		return nil, "", err
 	}
 
-
 	// try to get one from a bag
 	result, err := d.bag.Get()
-	if err != nil && errors.Is(err, cache.ErrNoItemsInBag) {
+	if err != nil && errkit.Is(err, cache.ErrNoItemsInBag) {
 		// if bag is empty, dial to all ips and return one
 		err = d.dialAllParallel(ctx)
 		if err != nil {
