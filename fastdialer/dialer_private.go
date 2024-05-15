@@ -131,7 +131,7 @@ func (d *Dialer) getLayer4Conn(ctx context.Context, network, hostname string, po
 
 	// == implement handler here ====
 	//  this will use a cached version or create new and cache it
-	l4Handler, err := getDialHandler(ctx, d, hostname, network, port, ips)
+	l4Handler, err := d.getDialHandler(ctx,  hostname, network, port, ips)
 	if err != nil {
 		return nil, "", err
 	}

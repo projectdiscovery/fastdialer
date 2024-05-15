@@ -2,20 +2,36 @@ package fastdialer
 
 import (
 	"context"
-	"math/rand"
 	"net"
 	"sync"
 	"sync/atomic"
 
 	"github.com/Mzack9999/gcache"
 	"github.com/pkg/errors"
+	"github.com/projectdiscovery/fastdialer/fastdialer/cache"
+	sliceutil "github.com/projectdiscovery/utils/slice"
 	"go.uber.org/multierr"
 )
+
+// temporary struct to store dial results
+type dialResult struct {
+	conn net.Conn
+	err  error
+	ip   string
+}
+
+// Close closes the connection
+func (d *dialResult) Close() {
+	if d.conn != nil {
+		_ = d.conn.Close()
+	}
+}
 
 // L4HandlerOpts contains options for managing and pooling
 // layer 4 connections to a particular address
 type L4HandlerOpts struct {
 	// PoolSize is the size of connection pool to maintain
+	// if any more connections are created, they are closed
 	PoolSize int
 }
 
@@ -34,33 +50,31 @@ type l4ConnHandler struct {
 	network string
 	// ips to dial
 	ips []string
-	// ctx for l4handler
-	ctx context.Context
-	// cancel function for l4handler
-	cancel context.CancelFunc
-	// poolingChan is the channel that continiously dials to the address
-	// and stores the results in the cache
-	poolingChan chan *dialResult
-	// initChan contains intial dial results
-	initChan chan *dialResult
-	// synchronize initChan etc to avoid parallel data race
+	// bag of connections 
+	bag *cache.Bag[*dialResult]
+	// permaError is a permanent error for this handler
+	// this only happens when all ips:[port] are dead or unreachable
+	permaError error
+	// m protects the ips slice
 	m sync.Mutex
 }
 
-// temporary struct to store dial results
-type dialResult struct {
-	conn net.Conn
-	err  error
-	ip   string
-}
-
 // getDialHandler returns a new dialHandler instance for the given address or returns an existing one
-func getDialHandler(ctx context.Context, fd *Dialer, hostname, network, port string, ips []string) (*l4ConnHandler, error) {
+func (fd *Dialer) getDialHandler(ctx context.Context, hostname, network, port string, ips []string) (*l4ConnHandler, error) {
 	if ctx.Err() != nil {
 		return nil, ctx.Err()
 	}
+	key := network + ":" + hostname + ":" + port
 	// if handler already exists for this address, return it no need to create a new one
-	if h, err := fd.l4HandlerCache.GetIFPresent(network + ":" + hostname + ":" + port); !errors.Is(err, gcache.KeyNotFoundError) && h != nil {
+	if h, err := fd.l4HandlerCache.GetIFPresent(key); !errors.Is(err, gcache.KeyNotFoundError) && h != nil {
+		return h, nil
+	}
+
+	fd.m.Lock()
+	defer fd.m.Unlock()
+
+	// check again if handler was already created by another goroutine
+	if h, err := fd.l4HandlerCache.GetIFPresent(key); !errors.Is(err, gcache.KeyNotFoundError) && h != nil {
 		return h, nil
 	}
 
@@ -82,27 +96,48 @@ func getDialHandler(ctx context.Context, fd *Dialer, hostname, network, port str
 		network:     network,
 		port:        port,
 		firstFlight: &atomic.Bool{},
-		poolingChan: make(chan *dialResult, handlerOpts.PoolSize), // cache size
 		ips:         ips,
+		bag:         cache.NewBag[*dialResult](handlerOpts.PoolSize),
 	}
 	h.firstFlight.Store(true)
-
-	// Note: this context should not be tied/inherited from connection/dial
-	// context since it's lifetime is limited to dialing only
-	// so this context should be inherited from fastdialer instance context
-	// if it has any
-	ctx, cancel := context.WithCancel(fd.ctx)
-	h.cancel = cancel
-	h.ctx = ctx
-	go h.run(ctx)
-
 	// put this handler in cache
-	if err := fd.l4HandlerCache.Set(network+":"+hostname+":"+port, h); err != nil {
-		cancel()
+	if err := fd.l4HandlerCache.Set(key, h); err != nil {
 		return nil, err
 	}
-
 	return h, nil
+}
+
+// getKey returns a key for the handler
+func (d *l4ConnHandler) getKey() string {
+	return d.network + ":" + d.hostname + ":" + d.port
+}
+
+// ips return a copy of ips
+func (d *l4ConnHandler) getIps() []string {
+	d.m.Lock()
+	defer d.m.Unlock()
+	return sliceutil.Clone(d.ips)
+}
+
+// updateIps updates the ips for the handler
+func (d *l4ConnHandler) updateIps(ips []string) {
+	d.m.Lock()
+	defer d.m.Unlock()
+	d.ips = ips
+}
+
+// getPermaError returns the permanent error for the handler
+func (d *l4ConnHandler) getPermaError() error {
+	d.m.Lock()
+	defer d.m.Unlock()
+	return d.permaError
+}
+
+// setPermaError sets the permanent error for the handler
+func (d *l4ConnHandler) setPermaError(err error) {
+	d.m.Lock()
+	defer d.m.Unlock()
+	d.permaError = err
 }
 
 // dialFirst performs the first dial to the address
@@ -111,7 +146,7 @@ func (d *l4ConnHandler) dialFirst(ctx context.Context) error {
 	if ctx.Err() != nil {
 		return ctx.Err()
 	}
-	_, err, _ := d.fd.group.Do(d.hostname+":"+d.port, func() (interface{}, error) {
+	_, err, _ := d.fd.group.Do(d.getKey(), func() (interface{}, error) {
 		errX := d.dialAllParallel(ctx)
 		if errX != nil {
 			return false, errX
@@ -133,20 +168,15 @@ func (d *l4ConnHandler) dialAllParallel(ctx context.Context) error {
 	go func() {
 		defer close(ch)
 		var wg sync.WaitGroup
-		alive := []string{}
 
 		defer func() {
 			if ctx.Err() != nil {
 				return
 			}
 			wg.Wait()
-			// only store alive ips
-			d.m.Lock()
-			d.ips = alive
-			d.m.Unlock()
 		}()
 
-		for _, ip := range d.ips {
+		for _, ip := range d.getIps() {
 			wg.Add(1)
 			go func(ip string) {
 				defer wg.Done()
@@ -157,7 +187,6 @@ func (d *l4ConnHandler) dialAllParallel(ctx context.Context) error {
 				d.fd.acquire() // no-op if max open connections is not set
 				conn, err := d.fd.simpleDialer.Dial(ctx, d.network, net.JoinHostPort(ip, d.port))
 				conn = d.fd.releaseWithHook(conn)
-
 				select {
 				case ch <- dialResult{conn, err, ip}:
 				case <-ctx.Done():
@@ -166,17 +195,12 @@ func (d *l4ConnHandler) dialAllParallel(ctx context.Context) error {
 					}
 					return
 				}
-				if err == nil {
-					d.m.Lock()
-					alive = append(alive, ip)
-					d.m.Unlock()
-				}
 			}(ip)
 		}
 	}()
 
 	var err error
-	idle := []net.Conn{}
+	results := []dialResult{}
 
 loop:
 	for {
@@ -189,114 +213,70 @@ loop:
 			}
 			if res.err != nil {
 				err = multierr.Append(err, res.err)
-				continue
+				continue loop
 			}
-			// put conn in cache
-			idle = append(idle, res.conn)
+			results = append(results, res)
 		}
 	}
 
-	if len(idle) == 0 {
+	if !d.firstFlight.Load() {
+		// if all failed return error
+		if len(results) == 0 {
+			return err
+		}
+		// if this is not first flight then put all successful connections in bag
+		for _, res := range results {
+			d.bag.Put(&res)
+		}
+		return nil
+	}
+
+	// if it is first flight then do more processing
+	if len(results) == 0 {
+		// most likely a permanent error
+		d.setPermaError(err)
 		return err
 	}
-	// put all in initChan
-	d.m.Lock()
-	d.initChan = make(chan *dialResult, len(idle))
-	d.m.Unlock()
-	for _, conn := range idle {
-		select {
-		case <-ctx.Done():
-			return ctx.Err()
-		case d.initChan <- &dialResult{conn: conn}:
-		}
+
+	alive := []string{}
+	for _, res := range results {
+		alive = append(alive, res.ip)
+		tmp := res
+		d.bag.Put(&tmp)
 	}
+	d.updateIps(alive)
 	return nil
-}
-
-// run continiously dials to the address and stores the results in the cache
-// it runs in background and is used by getConn to get connections
-func (d *l4ConnHandler) run(ctx context.Context) {
-	defer func() {
-		d.m.Lock()
-		close(d.poolingChan)
-		if d.initChan != nil {
-			close(d.initChan)
-		}
-		d.m.Unlock()
-	}()
-
-	var lastResult *dialResult
-	index := 0
-
-	d.m.Lock()
-	ips := d.ips
-	d.m.Unlock()
-
-	for {
-		select {
-		case <-ctx.Done():
-			if lastResult != nil && lastResult.conn != nil {
-				_ = lastResult.conn.Close()
-			}
-			return
-		case d.poolingChan <- lastResult:
-
-		default:
-			// reset index if it is out of bounds
-			if index >= len(ips) {
-				index = 0
-			}
-			ip := ips[index]
-
-			// dial new conn and put it in buffered chan
-			d.fd.acquire() // no-op if max open connections is not set
-			conn, err := d.fd.simpleDialer.Dial(ctx, d.network, net.JoinHostPort(ip, d.port))
-			conn = d.fd.releaseWithHook(conn)
-			// this is to avoid blocking when context is cancelled
-			lastResult = &dialResult{conn, err, ip}
-			index++
-		}
-	}
 }
 
 // getConn returns a connection to the address
 func (d *l4ConnHandler) getConn(ctx context.Context) (net.Conn, string, error) {
 	// if this is a first flight use singleflight
 	if d.firstFlight.Load() {
+		// dialFirst will perform preflight dial to all ips
+		// and removes dead ips and reuses already created connections
+		// this will block all concurrent calls to dialFirst until first dial is complete
 		err := d.dialFirst(ctx)
 		if err != nil {
 			return nil, "", err
 		}
 	}
-	for {
-		select {
-		case <-ctx.Done():
-			return nil, "", ctx.Err()
-		case res := <-d.initChan:
-			if res == nil {
-				continue
-			}
-			return res.conn, res.ip, res.err
-		case res := <-d.poolingChan:
-			if res == nil {
-				continue
-			}
-			return res.conn, res.ip, res.err
-		// need to rework this part
-		case d.poolingChan <- func() *dialResult {
-			index := rand.Intn(len(d.ips))
-			ip := d.ips[index]
-			d.fd.acquire() // no-op if max open connections is not set
-			conn, err := d.fd.simpleDialer.Dial(ctx, d.network, net.JoinHostPort(ip, d.port))
-			conn = d.fd.releaseWithHook(conn)
-			return &dialResult{conn, err, ip}
-		}():
-			continue
-		}
-	}
-}
 
-// Close closes the dial handler
-func (d *l4ConnHandler) Close() {
-	d.cancel()
+	// check if there is a permanent error
+	if err := d.getPermaError(); err != nil {
+		return nil, "", err
+	}
+
+
+	// try to get one from a bag
+	result, err := d.bag.Get()
+	if err != nil && errors.Is(err, cache.ErrNoItemsInBag) {
+		// if bag is empty, dial to all ips and return one
+		err = d.dialAllParallel(ctx)
+		if err != nil {
+			return nil, "", err
+		}
+		// pick new connection in next iteration
+		return d.getConn(ctx)
+	}
+	return result.conn, result.ip, result.err
 }

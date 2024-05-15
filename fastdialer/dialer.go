@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"net"
 	"strings"
+	"sync"
 
 	"github.com/Mzack9999/gcache"
 	gounit "github.com/docker/go-units"
@@ -63,11 +64,11 @@ type Dialer struct {
 	group          simpleflight.Group[string]
 	l4HandlerCache gcache.Cache[string, *l4ConnHandler]
 	sg             *sizedwaitgroup.SizedWaitGroup
-	ctx            context.Context
-	cancel         context.CancelFunc
+	m *sync.Mutex
 }
 
-func NewDialerWithCtx(ctx context.Context, options Options) (*Dialer, error) {
+// NewDialer returns a new dialer instance
+func NewDialer(options Options) (*Dialer, error) {
 	var resolvers []string
 	// Add system resolvers as the first to be tried
 	if options.ResolversFile {
@@ -177,13 +178,13 @@ func NewDialerWithCtx(ctx context.Context, options Options) (*Dialer, error) {
 		options:       &options,
 		networkpolicy: np,
 		group:         simpleflight.Group[string]{},
+		m:             &sync.Mutex{},
 	}
 	dx.l4HandlerCache = gcache.New[string, *l4ConnHandler](options.MaxL4HandlerPoolSize).
 		LRU().
 		Expiration(options.L4CacheExpiration).
 		EvictedFunc(func(key string, value *l4ConnHandler) {
 			dx.group.Forget(key)
-			value.Close()
 		}).
 		Build()
 
@@ -191,14 +192,9 @@ func NewDialerWithCtx(ctx context.Context, options Options) (*Dialer, error) {
 		tmp := sizedwaitgroup.New(options.MaxOpenConnections)
 		dx.sg = &tmp
 	}
-	dx.ctx, dx.cancel = context.WithCancel(ctx)
 	return dx, nil
 }
 
-// NewDialer instance
-func NewDialer(options Options) (*Dialer, error) {
-	return NewDialerWithCtx(context.Background(), options)
-}
 
 // Dial function compatible with net/http
 func (d *Dialer) Dial(ctx context.Context, network, address string) (conn net.Conn, err error) {
@@ -411,7 +407,6 @@ func (d *Dialer) GetDNSData(hostname string) (*retryabledns.DNSData, error) {
 
 // Close instance and cleanups
 func (d *Dialer) Close() {
-	d.cancel()
 	if d.mDnsCache != nil {
 		d.mDnsCache.Purge()
 	}
