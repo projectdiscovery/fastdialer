@@ -4,7 +4,6 @@ import (
 	"context"
 	"crypto/tls"
 	"net"
-	"os"
 
 	"github.com/projectdiscovery/fastdialer/fastdialer/ja3/impersonate"
 	ctxutil "github.com/projectdiscovery/utils/context"
@@ -12,6 +11,11 @@ import (
 	ptrutil "github.com/projectdiscovery/utils/ptr"
 	utls "github.com/refraction-networking/utls"
 	ztls "github.com/zmap/zcrypto/tls"
+)
+
+var (
+	// ErrRetryWithZTLS is a error that indicates to retry with ZTLS
+	ErrRetryWithZTLS = errkit.New("retry with ztls")
 )
 
 // ConnWrapper is a interface that implements higher level logic for a simple net.Conn
@@ -39,7 +43,13 @@ func NewConnWrap(nd net.Conn) ConnWrapper {
 
 // DialTLS connects to the address on the named network using TLS.
 // If ztlsFallback is true, it will fallback to ZTLS if the handshake fails.
-func (d *connWrap) DialTLS(ctx context.Context, network, address string, config *tls.Config, ztlsFallback bool) (net.Conn, error) {
+func (d *connWrap) DialTLS(ctx context.Context, network, address string, config *tls.Config, ztlsFallback bool) (conn net.Conn, err error) {
+	// when errored close underlying tcp
+	defer func() {
+		if err != nil {
+			_ = d.nd.Close()
+		}
+	}()
 	if ctx.Err() != nil {
 		return nil, ctx.Err()
 	}
@@ -49,18 +59,24 @@ func (d *connWrap) DialTLS(ctx context.Context, network, address string, config 
 	}
 	// todo: check if config verification is needed
 	tlsConn := tls.Client(d.nd, config)
-	err := tlsConn.HandshakeContext(ctx)
-	if err == nil || errkit.Is(err, os.ErrDeadlineExceeded) || !ztlsFallback {
+	err = tlsConn.HandshakeContext(ctx)
+	if err == nil {
 		return tlsConn, nil
 	}
-	// fallback with chrome ciphers by default
-	ztlsConfig := AsZTLSConfig(config)
-	ztlsConfig.CipherSuites = ztls.ChromeCiphers
-	return d.DialZTLS(ctx, network, address, ztlsConfig)
+	if errkit.IsDeadlineErr(err) || errkit.IsNetworkTemporaryErr(err) {
+		return nil, errkit.Wrap(err, "tls handshake timeout")
+	}
+	return nil, ErrRetryWithZTLS
 }
 
 // DialTLSAndImpersonate connects to the address on the named network using TLS and impersonates with given data
-func (d *connWrap) DialTLSAndImpersonate(ctx context.Context, network, address string, config *tls.Config, strategy impersonate.Strategy, identify *impersonate.Identity) (net.Conn, error) {
+func (d *connWrap) DialTLSAndImpersonate(ctx context.Context, network, address string, config *tls.Config, strategy impersonate.Strategy, identify *impersonate.Identity) (conn net.Conn, err error) {
+	// when errored close underlying tcp
+	defer func() {
+		if err != nil {
+			_ = d.nd.Close()
+		}
+	}()
 	if ctx.Err() != nil {
 		return nil, ctx.Err()
 	}
@@ -90,7 +106,13 @@ func (d *connWrap) DialTLSAndImpersonate(ctx context.Context, network, address s
 }
 
 // DialZTLS connects to the address on the named network using ZTLS.
-func (d *connWrap) DialZTLS(ctx context.Context, network, address string, config *ztls.Config) (net.Conn, error) {
+func (d *connWrap) DialZTLS(ctx context.Context, network, address string, config *ztls.Config) (conn net.Conn, err error) {
+	// when errored close underlying tcp
+	defer func() {
+		if err != nil {
+			_ = d.nd.Close()
+		}
+	}()
 	if ctx.Err() != nil {
 		return nil, ctx.Err()
 	}
@@ -103,7 +125,8 @@ func (d *connWrap) DialZTLS(ctx context.Context, network, address string, config
 	ztlsConn := ztls.Client(d.nd, config)
 	return ctxutil.ExecFuncWithTwoReturns(ctx, func() (net.Conn, error) {
 		if err := ztlsConn.Handshake(); err != nil {
-			return nil, err
+			// intentionally marshalled error to replace cause
+			return nil, errkit.New("ztls handshake failure: %v", err)
 		}
 		return ztlsConn, nil
 	})
@@ -119,6 +142,9 @@ func getDefaultTLSConfig() *tls.Config {
 }
 
 func AsZTLSConfig(tlsConfig *tls.Config) *ztls.Config {
+	if tlsConfig == nil {
+		tlsConfig = getDefaultTLSConfig()
+	}
 	ztlsConfig := &ztls.Config{
 		NextProtos:             tlsConfig.NextProtos,
 		ServerName:             tlsConfig.ServerName,

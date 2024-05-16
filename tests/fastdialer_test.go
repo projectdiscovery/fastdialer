@@ -2,6 +2,8 @@ package tests
 
 import (
 	"context"
+	"crypto/tls"
+	"net/http"
 	"sync"
 	"testing"
 	"time"
@@ -196,4 +198,50 @@ func TestFastDialerNConcurrent(t *testing.T) {
 	}
 
 	wg.Wait()
+}
+
+func TestFastDialerHTTP(t *testing.T) {
+	// sending and receiving using fastdialer connection
+	opts := fastdialer.DefaultOptions
+	dialer, err := fastdialer.NewDialer(opts)
+	require.Nil(t, err)
+
+	client := http.Client{
+		CheckRedirect: func(req *http.Request, via []*http.Request) error {
+			return http.ErrUseLastResponse
+		},
+		Timeout: 30 * time.Second,
+		Transport: &http.Transport{
+			DialContext: dialer.Dial,
+		},
+	}
+
+	resp, err := client.Get("http://scanme.sh")
+	require.Nil(t, err)
+	require.NotNil(t, resp)
+	require.Equal(t, resp.StatusCode, http.StatusOK)
+}
+
+func TestFastDialerHTTPS(t *testing.T) {
+	// sending and receiving using fastdialer connection
+	opts := fastdialer.DefaultOptions
+	dialer, err := fastdialer.NewDialer(opts)
+	require.Nil(t, err)
+
+	client := http.Client{
+		CheckRedirect: func(req *http.Request, via []*http.Request) error {
+			return http.ErrUseLastResponse
+		},
+		Timeout: 30 * time.Second,
+		Transport: &http.Transport{
+			DialContext: dialer.Dial,
+			TLSClientConfig: &tls.Config{
+				InsecureSkipVerify: true,
+			},
+		},
+	}
+	resp, err := client.Get("https://scanme.sh")
+	require.Nil(t, err)
+	require.NotNil(t, resp)
+	require.Equal(t, resp.StatusCode, http.StatusOK)
 }

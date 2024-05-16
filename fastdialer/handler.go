@@ -2,6 +2,7 @@ package fastdialer
 
 import (
 	"context"
+	"log/slog"
 	"net"
 	"sync"
 	"sync/atomic"
@@ -79,7 +80,7 @@ func (fd *Dialer) getDialHandler(ctx context.Context, hostname, network, port st
 	}
 
 	handlerOpts := L4HandlerOpts{
-		PoolSize: fd.options.MaxL4ConnsPrefetchSize,
+		PoolSize: fd.options.MaxPooledConnPerHandler,
 	}
 	// while creating new handler always check for preferred options from
 	// context
@@ -149,7 +150,10 @@ func (d *l4ConnHandler) dialFirst(ctx context.Context) error {
 	_, err, _ := d.fd.group.Do(d.getKey(), func() (interface{}, error) {
 		errX := d.dialAllParallel(ctx)
 		if errX != nil {
-			return false, errX
+			if errkit.IsDeadlineErr(errX) {
+				return false, errkit.WithAttr(errX, slog.Any("hostname", d.hostname), slog.Any("port", d.port))
+			}
+			return false, errkit.Append(errkit.WithAttr(CouldNotConnectError, slog.Any("hostname", d.hostname), slog.Any("port", d.port)), errX)
 		}
 		return true, nil
 	})
@@ -233,8 +237,10 @@ loop:
 
 	// if it is first flight then do more processing
 	if len(results) == 0 {
-		// most likely a permanent error
-		d.setPermaError(err)
+		if errkit.IsNetworkPermanentErr(err) {
+			// most likely a permanent error
+			d.setPermaError(err)
+		}
 		return err
 	}
 

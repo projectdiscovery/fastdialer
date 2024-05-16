@@ -6,11 +6,10 @@ require (
 	github.com/Mzack9999/gcache v0.0.0-20230410081825-519e28eab057
 	github.com/dimchansky/utfbom v1.1.1
 	github.com/docker/go-units v0.5.0
-	github.com/pkg/errors v0.9.1
 	github.com/projectdiscovery/hmap v0.0.41
 	github.com/projectdiscovery/networkpolicy v0.0.8
 	github.com/projectdiscovery/retryabledns v1.0.59
-	github.com/projectdiscovery/utils v0.0.93-0.20240515190223-c77d95f5cb2e
+	github.com/projectdiscovery/utils v0.0.93-0.20240515205400-37bc84ef0c3f
 	github.com/refraction-networking/utls v1.5.4
 	github.com/stretchr/testify v1.9.0
 	github.com/zmap/zcrypto v0.0.0-20230422215203-9a665e1e9968
@@ -22,6 +21,7 @@ require (
 require (
 	github.com/logrusorgru/aurora/v4 v4.0.0 // indirect
 	github.com/mattn/go-isatty v0.0.19 // indirect
+	github.com/pkg/errors v0.9.1 // indirect
 )
 
 require (

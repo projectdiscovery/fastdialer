@@ -5,12 +5,14 @@ import (
 	"context"
 	"crypto/tls"
 	"encoding/json"
-	"fmt"
+	"log/slog"
 	"net"
+	"strings"
 
 	"github.com/projectdiscovery/fastdialer/fastdialer/dialer"
 	"github.com/projectdiscovery/fastdialer/fastdialer/ja3/impersonate"
 	cryptoutil "github.com/projectdiscovery/utils/crypto"
+	"github.com/projectdiscovery/utils/errkit"
 	iputil "github.com/projectdiscovery/utils/ip"
 	ztls "github.com/zmap/zcrypto/tls"
 )
@@ -30,11 +32,6 @@ func (d *Dialer) dial(ctx context.Context, opts *dialOptions) (conn net.Conn, er
 	if ctx.Err() != nil {
 		return nil, ctx.Err()
 	}
-	defer func() {
-		if r := recover(); r != nil {
-			err = fmt.Errorf("panic: %v", r)
-		}
-	}()
 	var hostname, port, fixedIP string
 
 	// parse the address
@@ -51,11 +48,11 @@ func (d *Dialer) dial(ctx context.Context, opts *dialOptions) (conn net.Conn, er
 		data, err = d.dnsclient.Resolve(hostname)
 	}
 	if data == nil {
-		return nil, ResolveHostError
+		return nil, errkit.WithAttr(ResolveHostError, slog.Any("hostname", hostname))
 	}
 
 	if err != nil || len(data.A)+len(data.AAAA) == 0 {
-		return nil, NoAddressFoundError
+		return nil, errkit.WithAttr(NoAddressFoundError, slog.Any("hostname", hostname))
 	}
 
 	var tmp []string
@@ -83,20 +80,27 @@ func (d *Dialer) dial(ctx context.Context, opts *dialOptions) (conn net.Conn, er
 	}
 
 	if len(IPS) == 0 {
-		return nil, NoAddressAllowedError
+		return nil, errkit.WithAttr(NoAddressAllowedError, slog.Any("hostname", hostname))
 	}
+	return d.dialAndGetConn(ctx, opts, hostname, port, IPS, 0)
+}
 
+// dialAndGetConn returns a connection for given address
+func (d *Dialer) dialAndGetConn(ctx context.Context, opts *dialOptions, hostname, port string, IPS []string, retryAttempt int) (net.Conn, error) {
+	if retryAttempt > d.options.MaxPooledConnPerHandler {
+		// unlikely but to avoid infinite loop
+		return nil, errkit.New("something went wrong max retry reached")
+	}
 	// get layer 4 connection and escalate it as per requirements
 	nativeConn, ip, err := d.getLayer4Conn(ctx, opts.network, hostname, port, IPS)
 	if err != nil {
-		return nil, err
+		return nil, errkit.WithAttr(err, slog.Any("hostname", hostname), slog.Any("port", port))
 	}
-	if conn == nil {
-		err = CouldNotConnectError
+	if nativeConn == nil {
+		return nil, errkit.WithAttr(CouldNotConnectError, slog.Any("hostname", hostname), slog.Any("port", port))
 	}
 
-	// escalate it to required layer using dialIP
-	return d.escalateConnection(ctx, nativeConn, &escalateLayerOpts{
+	escalateOpts := &escalateLayerOpts{
 		hostname:            hostname,
 		ip:                  ip,
 		port:                port,
@@ -107,7 +111,35 @@ func (d *Dialer) dial(ctx context.Context, opts *dialOptions) (conn net.Conn, er
 		impersonateIdentity: opts.impersonateIdentity,
 		tlsconfig:           opts.tlsconfig,
 		ztlsconfig:          opts.ztlsconfig,
-	})
+	}
+	// escalate it to required layer using dialIP
+	tconn, err := d.escalateConnection(ctx, nativeConn, escalateOpts)
+	if isClosedConnErr(err) {
+		_ = nativeConn.Close()
+		// when connection is open for too long (greater than dialer keep alive timeout)
+		// it is closed by go runtime internally in this case just retry with new connection
+		return d.dialAndGetConn(ctx, opts, hostname, port, IPS, retryAttempt+1)
+	}
+
+	if err != nil && errkit.Is(err, dialer.ErrRetryWithZTLS) {
+		_ = nativeConn.Close()
+		// retry with ztls (which is default behaviour for all tls handshake failures)
+		escalateOpts.shouldUseTLS = false
+		escalateOpts.shouldUseZTLS = true
+		tconn, err := d.dialAndGetConn(ctx, opts, hostname, port, IPS, retryAttempt+1)
+		if isClosedConnErr(err) {
+			_ = nativeConn.Close()
+			// when connection is open for too long (greater than dialer keep alive timeout)
+			// it is closed by go runtime internally in this case just retry with new connection
+			return d.dialAndGetConn(ctx, opts, hostname, port, IPS, retryAttempt+1)
+		}
+		return tconn, err
+	}
+	return tconn, err
+}
+
+func isClosedConnErr(err error) bool {
+	return err != nil && strings.Contains(err.Error(), "use of closed network connection")
 }
 
 // getLayer4Conn return a layer 4 connection for given address
@@ -126,16 +158,23 @@ func (d *Dialer) getLayer4Conn(ctx context.Context, network, hostname string, po
 				return conn, ip, nil
 			}
 		}
-		return nil, "", CouldNotConnectError
+		return nil, "", errkit.WithAttr(CouldNotConnectError, slog.Any("network", network), slog.Any("address", hostname))
 	}
 
 	// == implement handler here ====
 	//  this will use a cached version or create new and cache it
-	l4Handler, err := d.getDialHandler(ctx,  hostname, network, port, ips)
+	l4Handler, err := d.getDialHandler(ctx, hostname, network, port, ips)
 	if err != nil {
 		return nil, "", err
 	}
-	return l4Handler.getConn(ctx)
+	conn, ip, err = l4Handler.getConn(ctx)
+	if err != nil {
+		if errkit.IsNetworkPermanentErr(err) {
+			return nil, "", errkit.WithAttr(CouldNotConnectError, slog.Any("network", network), slog.Any("address", hostname))
+		}
+		return nil, "", errkit.WithAttr(err, slog.Any("network", network), slog.Any("address", hostname))
+	}
+	return conn, ip, nil
 }
 
 // escalateLayerOpts contains options for escalating layer 4 connection
@@ -183,7 +222,12 @@ func (d *Dialer) escalateConnection(ctx context.Context, layer4Conn net.Conn, op
 		}
 
 	case opts.shouldUseZTLS:
-		ztlsconfigCopy := opts.ztlsconfig.Clone()
+		var ztlsconfigCopy *ztls.Config
+		if opts.ztlsconfig != nil {
+			ztlsconfigCopy = opts.ztlsconfig.Clone()
+		} else {
+			ztlsconfigCopy = dialer.AsZTLSConfig(opts.tlsconfig)
+		}
 		switch {
 		case d.options.SNIName != "":
 			ztlsconfigCopy.ServerName = d.options.SNIName

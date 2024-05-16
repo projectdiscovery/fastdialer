@@ -61,24 +61,24 @@ type Options struct {
 	OnDialCallback           func(hostname, IP string)
 	DisableZtlsFallback      bool
 	WithNetworkPolicyOptions *networkpolicy.Options
-	Logger                   *log.Logger // optional logger to log errors(like hostfile init error)
-	MaxL4HandlerPoolSize     int
-	L4CacheExpiration        time.Duration
-	MaxL4ConnsPrefetchSize   int
-	MaxOpenConnections       int // default -1, no limit
+	Logger                   *log.Logger   // optional logger to log errors(like hostfile init error)
+	MaxL4Handlers            int           // max handlers (handler is created for each network:host|ip:port)
+	L4HandlerExpiration      time.Duration // expiration time for handlers
+	MaxPooledConnPerHandler  int           // max pooled connections per handler
+	MaxOpenConnections       int           // default -1, no limit
 }
 
 // DefaultOptions of the cache
 var DefaultOptions = Options{
-	BaseResolvers:          DefaultResolvers,
-	MaxRetries:             5,
-	HostsFile:              true,
-	ResolversFile:          true,
-	CacheType:              Disk,
-	DialerTimeout:          10 * time.Second,
-	DialerKeepAlive:        10 * time.Second,
-	MaxL4HandlerPoolSize:   100, // 100 domains ?
-	L4CacheExpiration:      5 * time.Minute,
-	MaxL4ConnsPrefetchSize: 3,
-	MaxOpenConnections:     -1,
+	BaseResolvers:           DefaultResolvers,
+	MaxRetries:              5,
+	HostsFile:               true,
+	ResolversFile:           true,
+	CacheType:               Disk,
+	DialerTimeout:           10 * time.Second,
+	DialerKeepAlive:         60 * time.Second, // for cached connections
+	MaxL4Handlers:           500,
+	L4HandlerExpiration:     5 * time.Minute,
+	MaxPooledConnPerHandler: 10,
+	MaxOpenConnections:      -1,
 }

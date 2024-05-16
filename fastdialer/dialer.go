@@ -64,7 +64,7 @@ type Dialer struct {
 	group          simpleflight.Group[string]
 	l4HandlerCache gcache.Cache[string, *l4ConnHandler]
 	sg             *sizedwaitgroup.SizedWaitGroup
-	m *sync.Mutex
+	m              *sync.Mutex
 }
 
 // NewDialer returns a new dialer instance
@@ -124,6 +124,8 @@ func NewDialer(options Options) (*Dialer, error) {
 		}
 	}
 
+	netDialer.Dial()
+
 	var hostsFileData *hybrid.HybridMap
 	// load hardcoded values from host file
 	if options.HostsFile {
@@ -180,9 +182,9 @@ func NewDialer(options Options) (*Dialer, error) {
 		group:         simpleflight.Group[string]{},
 		m:             &sync.Mutex{},
 	}
-	dx.l4HandlerCache = gcache.New[string, *l4ConnHandler](options.MaxL4HandlerPoolSize).
+	dx.l4HandlerCache = gcache.New[string, *l4ConnHandler](options.MaxL4Handlers).
 		LRU().
-		Expiration(options.L4CacheExpiration).
+		Expiration(options.L4HandlerExpiration).
 		EvictedFunc(func(key string, value *l4ConnHandler) {
 			dx.group.Forget(key)
 		}).
@@ -194,7 +196,6 @@ func NewDialer(options Options) (*Dialer, error) {
 	}
 	return dx, nil
 }
-
 
 // Dial function compatible with net/http
 func (d *Dialer) Dial(ctx context.Context, network, address string) (conn net.Conn, err error) {
@@ -293,7 +294,6 @@ func (d *Dialer) GetDialedIP(hostname string) string {
 	if ok {
 		return string(v)
 	}
-
 	return ""
 }
 
