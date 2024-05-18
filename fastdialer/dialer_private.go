@@ -140,24 +140,39 @@ func (d *Dialer) dial(ctx context.Context, opts *dialOptions) (conn net.Conn, er
 
 	var finalDialer l4dialer = d.dialer
 
-	if dw == nil && hostname != "" && len(IPS) > 0 {
+	if dw == nil && hostname != "" && len(IPS) > 0 && d.proxyDialer == nil {
 		// only cache it if below conditions are met
 		// 1. it is already not present
 		// 2. it is a domain and not ip
 		// 3. it has more than 1 valid ip
+		// 4. proxy dialer is not set
 
-		dw, err = utils.NewDialWrap(d.dialer, IPS, opts.network, opts.address,opts.port)
+		dw, err = utils.NewDialWrap(d.dialer, IPS, opts.network, opts.address, opts.port)
 		if err != nil {
 			return nil, errors.Join(err, fmt.Errorf("could not create dialwrap"))
 		}
 		if err = d.dialCache.Set(connHash(opts.network, opts.address), dw); err != nil {
 			return nil, errors.Join(err, fmt.Errorf("could not set dialwrap"))
 		}
+	}
+	if dw != nil {
 		finalDialer = dw
+		// when using dw ip , network , port etc are preset
+		// so get any one of them to avoid breaking furthur logic
+		ip, port := dw.Address()
+		opts.ips = []string{ip}
+		opts.port = port
 	}
 
 	conn, err = d.dialIPS(ctx, finalDialer, opts)
 	if err == nil {
+		if conn == nil {
+			err = CouldNotConnectError
+			return
+		}
+		if conn.RemoteAddr() == nil {
+			return nil, errors.New("remote address is nil")
+		}
 		ip, _, _ := net.SplitHostPort(conn.RemoteAddr().String())
 		if d.options.WithDialerHistory && d.dialerHistory != nil {
 			setErr := d.dialerHistory.Set(hostname, []byte(ip))
@@ -183,9 +198,9 @@ func (d *Dialer) dial(ctx context.Context, opts *dialOptions) (conn net.Conn, er
 			}
 		}
 	}
-	if conn == nil {
-		return nil, CouldNotConnectError
-	}
+	// if conn == nil {
+	// 	return nil, CouldNotConnectError
+	// }
 	return
 }
 
@@ -209,7 +224,7 @@ func (d *Dialer) dialIPS(ctx context.Context, l4 l4dialer, opts *dialOptions) (c
 			}
 			TlsConn := tls.Client(l4Conn, tlsconfigCopy)
 			if err := TlsConn.HandshakeContext(ctx); err != nil {
-				return nil, err
+				return nil, errors.Join(err, fmt.Errorf("could not handshake"))
 			}
 			conn = TlsConn
 		} else {

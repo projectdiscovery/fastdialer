@@ -358,6 +358,15 @@ func (d *DialWrap) dialParallel(ctx context.Context, primaries, fallbacks []net.
 	}
 }
 
+// Address returns ip and port of the target
+// if multiple ips are present, it returns the first one
+func (d *DialWrap) Address() (string, string) {
+	if len(d.ips) == 0 {
+		return "", ""
+	}
+	return d.ips[0].String(), d.port
+}
+
 // dialSerial connects to a list of addresses in sequence, returning
 // either the first successful connection, or the first error.
 func (d *DialWrap) dialSerial(ctx context.Context, ras []net.IP, network, port string) (net.Conn, error) {
