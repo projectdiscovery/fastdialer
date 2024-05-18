@@ -14,6 +14,7 @@ require (
 	github.com/refraction-networking/utls v1.5.4
 	github.com/stretchr/testify v1.9.0
 	github.com/zmap/zcrypto v0.0.0-20230422215203-9a665e1e9968
+	go.uber.org/multierr v1.11.0
 	golang.org/x/exp v0.0.0-20221205204356-47842c84f3db
 	golang.org/x/net v0.23.0
 )
@@ -50,7 +51,6 @@ require (
 	github.com/yl2chen/cidranger v1.0.2 // indirect
 	github.com/zmap/rc2 v0.0.0-20190804163417-abaa70531248 // indirect
 	go.etcd.io/bbolt v1.3.7 // indirect
-	go.uber.org/multierr v1.11.0 // indirect
 	golang.org/x/crypto v0.21.0 // indirect
 	golang.org/x/mod v0.12.0 // indirect
 	golang.org/x/sys v0.18.0 // indirect
