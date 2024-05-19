@@ -162,6 +162,9 @@ func (d *Dialer) dial(ctx context.Context, opts *dialOptions) (conn net.Conn, er
 		ip, port := dw.Address()
 		opts.ips = []string{ip}
 		opts.port = port
+		// also set hostname by parsing it from address
+		hostname, _, _ := net.SplitHostPort(opts.address)
+		opts.hostname = hostname
 	}
 
 	conn, err = d.dialIPS(ctx, finalDialer, opts)
@@ -230,7 +233,7 @@ func (d *Dialer) dialIPS(ctx context.Context, l4 l4dialer, opts *dialOptions) (c
 		} else {
 			nativeConn, err := l4.DialContext(ctx, opts.network, hostPort)
 			if err != nil {
-				return nativeConn, err
+				return nil, err
 			}
 			// clone existing tls config
 			uTLSConfig := &utls.Config{
