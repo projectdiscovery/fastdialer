@@ -114,8 +114,13 @@ func (d *DialWrap) DialContext(ctx context.Context, _ string, _ string) (net.Con
 	case <-ctx.Done():
 		return nil, multierr.Append(ErrInflightCancel, ctx.Err())
 	case res, ok := <-d.firstFlight(ctx):
-		if ok {
-			return res, nil
+		if !ok {
+			// closed channel so depending on the error
+			// either dial new or return the error
+			if d.err == nil {
+				return d.dial(ctx)
+			}
+			return nil, d.err
 		}
 		if res.Conn != nil {
 			// check expiry
@@ -125,12 +130,10 @@ func (d *DialWrap) DialContext(ctx context.Context, _ string, _ string) (net.Con
 			}
 			return res.Conn, nil
 		}
-		// if channel is closed, check return status
-		if d.err == nil {
-			// target is reachable
-			return d.dial(ctx)
+		if d.err != nil {
+			return nil, d.err
 		}
-		return nil, d.err
+		return nil, res.error
 	}
 }
 
