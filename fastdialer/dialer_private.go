@@ -47,6 +47,10 @@ type dialOptions struct {
 }
 
 func (d *Dialer) dial(ctx context.Context, opts *dialOptions) (conn net.Conn, err error) {
+	// add global timeout to context
+	ctx, cancel := context.WithTimeout(ctx, d.options.DialerTimeout)
+	defer cancel()
+
 	var hostname, port, fixedIP string
 	var IPS []string
 	// check if this is present in cache
