@@ -48,7 +48,7 @@ type dialOptions struct {
 
 func (d *Dialer) dial(ctx context.Context, opts *dialOptions) (conn net.Conn, err error) {
 	// add global timeout to context
-	ctx, cancel := context.WithTimeout(ctx, d.options.DialerTimeout)
+	ctx, cancel := context.WithTimeoutCause(ctx, d.options.DialerTimeout, fmt.Errorf("fastdialer dial timeout"))
 	defer cancel()
 
 	var hostname, port, fixedIP string
