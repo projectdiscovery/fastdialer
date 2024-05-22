@@ -5,8 +5,8 @@ import (
 	"context"
 	"crypto/tls"
 	"encoding/json"
-	"errors"
 	"fmt"
+	"log/slog"
 	"net"
 	"os"
 	"strings"
@@ -16,7 +16,7 @@ import (
 	"github.com/projectdiscovery/fastdialer/fastdialer/utils"
 	ctxutil "github.com/projectdiscovery/utils/context"
 	cryptoutil "github.com/projectdiscovery/utils/crypto"
-	errorutil "github.com/projectdiscovery/utils/errors"
+	"github.com/projectdiscovery/utils/errkit"
 	iputil "github.com/projectdiscovery/utils/ip"
 	ptrutil "github.com/projectdiscovery/utils/ptr"
 	utls "github.com/refraction-networking/utls"
@@ -48,7 +48,7 @@ type dialOptions struct {
 
 func (d *Dialer) dial(ctx context.Context, opts *dialOptions) (conn net.Conn, err error) {
 	// add global timeout to context
-	ctx, cancel := context.WithTimeoutCause(ctx, d.options.DialerTimeout, fmt.Errorf("fastdialer dial timeout"))
+	ctx, cancel := context.WithTimeoutCause(ctx, d.options.DialerTimeout, ErrDialTimeout)
 	defer cancel()
 
 	var hostname, port, fixedIP string
@@ -99,12 +99,10 @@ func (d *Dialer) dial(ctx context.Context, opts *dialOptions) (conn net.Conn, er
 		if data == nil {
 			return nil, ResolveHostError
 		}
-
 		if err != nil || len(data.A)+len(data.AAAA) == 0 {
 			return nil, NoAddressFoundError
 		}
 
-		var numInvalidIPS int
 		// use fixed ip as first
 		if fixedIP != "" {
 			IPS = append(IPS, fixedIP)
@@ -121,7 +119,6 @@ func (d *Dialer) dial(ctx context.Context, opts *dialOptions) (conn net.Conn, er
 				if d.options.OnInvalidTarget != nil {
 					d.options.OnInvalidTarget(hostname, ip, port)
 				}
-				numInvalidIPS++
 				continue
 			}
 			if d.options.OnBeforeDial != nil {
@@ -153,10 +150,10 @@ func (d *Dialer) dial(ctx context.Context, opts *dialOptions) (conn net.Conn, er
 
 		dw, err = utils.NewDialWrap(d.dialer, IPS, opts.network, opts.address, opts.port)
 		if err != nil {
-			return nil, errors.Join(err, fmt.Errorf("could not create dialwrap"))
+			return nil, errkit.Wrap(err, "could not create dialwrap")
 		}
 		if err = d.dialCache.Set(connHash(opts.network, opts.address), dw); err != nil {
-			return nil, errors.Join(err, fmt.Errorf("could not set dialwrap"))
+			return nil, errkit.Wrap(err, "could not set dialwrap")
 		}
 	}
 	if dw != nil {
@@ -178,7 +175,7 @@ func (d *Dialer) dial(ctx context.Context, opts *dialOptions) (conn net.Conn, er
 			return
 		}
 		if conn.RemoteAddr() == nil {
-			return nil, errors.New("remote address is nil")
+			return nil, errkit.New("remote address is nil")
 		}
 		ip, _, _ := net.SplitHostPort(conn.RemoteAddr().String())
 		if d.options.WithDialerHistory && d.dialerHistory != nil {
@@ -205,16 +202,22 @@ func (d *Dialer) dial(ctx context.Context, opts *dialOptions) (conn net.Conn, er
 			}
 		}
 	}
-	// if conn == nil {
-	// 	return nil, CouldNotConnectError
-	// }
 	return
 }
 
 func (d *Dialer) dialIPS(ctx context.Context, l4 l4dialer, opts *dialOptions) (conn net.Conn, err error) {
 	hostPort := net.JoinHostPort(opts.ips[0], opts.port)
+
+	// logAddress is the address that will be logged in case of error
+	logAddress := opts.hostname
+	if logAddress == "" {
+		logAddress = opts.ips[0]
+	}
+	logAddress += ":" + opts.port
+
 	if opts.shouldUseTLS {
 		tlsconfigCopy := opts.tlsconfig.Clone()
+
 		switch {
 		case d.options.SNIName != "":
 			tlsconfigCopy.ServerName = d.options.SNIName
@@ -224,20 +227,21 @@ func (d *Dialer) dialIPS(ctx context.Context, l4 l4dialer, opts *dialOptions) (c
 		case !iputil.IsIP(opts.hostname):
 			tlsconfigCopy.ServerName = opts.hostname
 		}
+
 		if opts.impersonateStrategy == impersonate.None {
 			l4Conn, err := l4.DialContext(ctx, opts.network, hostPort)
 			if err != nil {
-				return nil, err
+				return nil, handleDialError(err, logAddress)
 			}
 			TlsConn := tls.Client(l4Conn, tlsconfigCopy)
 			if err := TlsConn.HandshakeContext(ctx); err != nil {
-				return nil, errors.Join(err, fmt.Errorf("could not handshake"))
+				return nil, errkit.Wrap(err, "could not tls handshake")
 			}
 			conn = TlsConn
 		} else {
 			nativeConn, err := l4.DialContext(ctx, opts.network, hostPort)
 			if err != nil {
-				return nil, err
+				return nil, handleDialError(err, logAddress)
 			}
 			// clone existing tls config
 			uTLSConfig := &utls.Config{
@@ -275,7 +279,7 @@ func (d *Dialer) dialIPS(ctx context.Context, l4 l4dialer, opts *dialOptions) (c
 		}
 		l4Conn, err := l4.DialContext(ctx, opts.network, hostPort)
 		if err != nil {
-			return nil, err
+			return nil, handleDialError(err, logAddress)
 		}
 		ztlsConn := ztls.Client(l4Conn, ztlsconfigCopy)
 		_, err = ctxutil.ExecFuncWithTwoReturns(ctx, func() (bool, error) {
@@ -310,13 +314,15 @@ func (d *Dialer) dialIPS(ctx context.Context, l4 l4dialer, opts *dialOptions) (c
 			case conn = <-connectionCh:
 			case err = <-errCh:
 			}
+			err = handleDialError(err, logAddress)
 		} else {
 			conn, err = l4.DialContext(ctx, opts.network, hostPort)
+			err = handleDialError(err, logAddress)
 		}
 	}
 	// fallback to ztls  in case of handshake error with chrome ciphers
 	// ztls fallback can either be disabled by setting env variable DISABLE_ZTLS_FALLBACK=true or by setting DisableZtlsFallback=true in options
-	if err != nil && !errors.Is(err, os.ErrDeadlineExceeded) && !(d.options.DisableZtlsFallback && disableZTLSFallback) {
+	if err != nil && !errkit.Is(err, os.ErrDeadlineExceeded) && !(d.options.DisableZtlsFallback && disableZTLSFallback) {
 		var ztlsconfigCopy *ztls.Config
 		if opts.shouldUseZTLS {
 			ztlsconfigCopy = opts.ztlsconfig.Clone()
@@ -330,13 +336,13 @@ func (d *Dialer) dialIPS(ctx context.Context, l4 l4dialer, opts *dialOptions) (c
 			}
 			ztlsconfigCopy, err = AsZTLSConfig(opts.tlsconfig)
 			if err != nil {
-				return nil, errorutil.NewWithErr(err).Msgf("could not convert tls config to ztls config")
+				return nil, errkit.Wrap(err, "could not convert tls config to ztls config")
 			}
 		}
 		ztlsconfigCopy.CipherSuites = ztls.ChromeCiphers
 		l4Conn, err := l4.DialContext(ctx, opts.network, hostPort)
 		if err != nil {
-			return nil, err
+			return nil, handleDialError(err, logAddress)
 		}
 		ztlsConn := ztls.Client(l4Conn, ztlsconfigCopy)
 		_, err = ctxutil.ExecFuncWithTwoReturns(ctx, func() (bool, error) {
@@ -354,4 +360,25 @@ func (d *Dialer) dialIPS(ctx context.Context, l4 l4dialer, opts *dialOptions) (c
 // connHash returns a hash of the connection
 func connHash(network string, address string) string {
 	return fmt.Sprintf("%s-%s", network, address)
+}
+
+// handleDialError is a helper function to handle dial errors
+// it also adds address attribute to the error
+func handleDialError(err error, address string) error {
+	if err == nil {
+		return nil
+	}
+	errx := errkit.FromError(err)
+	errx = errx.SetAttr(slog.Any("address", address))
+	// if error kind is not set, if it is i/o timeout, set it to temporary
+	if errx.Kind() == nil {
+		if errx.Cause() != nil && strings.Contains(errx.Cause().Error(), "i/o timeout") {
+			// TODO: this is a tough call, i/o timeout happens in both cases
+			// it could be either temporary or permanent internally i/o timeout
+			// is actually a context.DeadlineExceeded error but std lib has decided to keep legacy/original error
+			errx = errx.SetKind(errkit.ErrKindNetworkTemporary)
+		}
+	}
+	// TODO: parse and mark permanent or temporary errors
+	return errx
 }

@@ -18,6 +18,7 @@ import (
 	retryabledns "github.com/projectdiscovery/retryabledns"
 	cryptoutil "github.com/projectdiscovery/utils/crypto"
 	"github.com/projectdiscovery/utils/env"
+	"github.com/projectdiscovery/utils/errkit"
 	"github.com/zmap/zcrypto/encoding/asn1"
 	ztls "github.com/zmap/zcrypto/tls"
 	"golang.org/x/net/proxy"
@@ -196,8 +197,7 @@ func (d *Dialer) DialTLS(ctx context.Context, network, address string) (conn net
 
 // DialZTLS with encrypted connection using ztls
 func (d *Dialer) DialZTLS(ctx context.Context, network, address string) (conn net.Conn, err error) {
-	conn, err = d.DialZTLSWithConfig(ctx, network, address, &ztls.Config{InsecureSkipVerify: true})
-	return
+	return d.DialZTLSWithConfig(ctx, network, address, &ztls.Config{InsecureSkipVerify: true})
 }
 
 // DialTLS with encrypted connection
@@ -234,7 +234,7 @@ func (d *Dialer) DialZTLSWithConfig(ctx context.Context, network, address string
 	if IsTLS13(config) {
 		stdTLSConfig, err := AsTLSConfig(config)
 		if err != nil {
-			return nil, err
+			return nil, errkit.Wrap(err, "could not convert ztls config to tls config")
 		}
 		return d.dial(ctx, &dialOptions{
 			network:             network,

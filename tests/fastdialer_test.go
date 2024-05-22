@@ -222,6 +222,7 @@ func TestFastDialerHTTPS(t *testing.T) {
 	opts := fastdialer.DefaultOptions
 	dialer, err := fastdialer.NewDialer(opts)
 	require.Nil(t, err)
+	defer dialer.Close()
 
 	client := http.Client{
 		CheckRedirect: func(req *http.Request, via []*http.Request) error {

@@ -7,9 +7,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/pkg/errors"
-	"go.uber.org/multierr"
-
+	"github.com/projectdiscovery/utils/errkit"
 	iputil "github.com/projectdiscovery/utils/ip"
 )
 
@@ -37,9 +35,10 @@ import (
 // Error constants
 var (
 	// errGotConnection has already been established
-	ErrInflightCancel = errors.New("context cancelled before establishing connection")
-	ErrNoIPs          = errors.New("no ips provided in dialWrap")
-	ExpireConnAfter   = time.Duration(5) * time.Second
+	ErrInflightCancel       = errkit.New("context cancelled before establishing connection")
+	ErrNoIPs                = errkit.New("no ips provided in dialWrap")
+	ExpireConnAfter         = time.Duration(5) * time.Second
+	ErrPortClosedOrFiltered = errkit.New("port closed or filtered").SetKind(errkit.ErrKindNetworkPermanent)
 )
 
 // dialResult represents the result of a dial operation
@@ -105,14 +104,14 @@ func (d *DialWrap) DialContext(ctx context.Context, _ string, _ string) (net.Con
 	if d.completedFirstFlight.Load() {
 		// if first flight completed and it failed due to other reasons
 		// and not due to context cancellation
-		if d.err != nil && !errors.Is(d.err, ErrInflightCancel) && !errors.Is(d.err, context.Canceled) {
+		if d.err != nil && !errkit.Is(d.err, ErrInflightCancel) && !errkit.Is(d.err, context.Canceled) {
 			return nil, d.err
 		}
 		return d.dial(ctx)
 	}
 	select {
 	case <-ctx.Done():
-		return nil, multierr.Append(ErrInflightCancel, ctx.Err())
+		return nil, errkit.Append(ErrInflightCancel, ctx.Err())
 	case res, ok := <-d.firstFlight(ctx):
 		if !ok {
 			// closed channel so depending on the error
@@ -193,7 +192,7 @@ func (d *DialWrap) dialAllParallel(ctx context.Context) ([]*dialResult, error) {
 				defer wg.Done()
 				select {
 				case <-ctx.Done():
-					rec <- &dialResult{error: multierr.Append(ErrInflightCancel, ctx.Err())}
+					rec <- &dialResult{error: errkit.Append(ErrInflightCancel, ctx.Err())}
 				default:
 					c, err := d.dialer.DialContext(ctx, d.network, net.JoinHostPort(ipx.String(), d.port))
 					rec <- &dialResult{Conn: c, error: err, expiry: time.Now().Add(ExpireConnAfter)}
@@ -209,7 +208,7 @@ func (d *DialWrap) dialAllParallel(ctx context.Context) ([]*dialResult, error) {
 		if result.Conn != nil {
 			conns = append(conns, result)
 		} else {
-			if !errors.Is(result.error, ErrInflightCancel) {
+			if !errkit.Is(result.error, ErrInflightCancel) {
 				errs = append(errs, result)
 			}
 		}
@@ -227,7 +226,13 @@ func (d *DialWrap) dialAllParallel(ctx context.Context) ([]*dialResult, error) {
 	// and blacklist those ips permanently
 	var finalErr error
 	for _, v := range errs {
-		finalErr = multierr.Append(finalErr, v.error)
+		finalErr = errkit.Append(finalErr, v.error)
+	}
+	// if this is the case then most likely the port is closed or filtered
+	// so return appropriate error
+	if !errkit.Is(finalErr, ErrInflightCancel) {
+		// if it not inflight cancel then it is a permanent error
+		return nil, errkit.Append(ErrPortClosedOrFiltered, finalErr)
 	}
 	return nil, finalErr
 }
@@ -393,7 +398,7 @@ func (d *DialWrap) dialSerial(ctx context.Context, ras []net.IP, network, port s
 	}
 
 	if firstErr == nil {
-		firstErr = errors.Wrap(net.UnknownNetworkError(network), "dialSerial")
+		firstErr = errkit.Wrap(net.UnknownNetworkError(network), "dialSerial")
 	}
 	return nil, firstErr
 }
