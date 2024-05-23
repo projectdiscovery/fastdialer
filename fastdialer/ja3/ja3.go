@@ -2,11 +2,11 @@ package ja3
 
 import (
 	"crypto/sha256"
-	"errors"
 	"fmt"
 	"strconv"
 	"strings"
 
+	"github.com/projectdiscovery/utils/errkit"
 	utls "github.com/refraction-networking/utls"
 )
 
@@ -72,7 +72,7 @@ func parseVersion(version string) (uint16, error) {
 func parseCipherSuites(cipherToken string) ([]uint16, error) {
 	cipherToken = cleanup(cipherToken)
 	if cipherToken == "" {
-		return nil, errors.New("no cipher suites provided")
+		return nil, errkit.New("no cipher suites provided")
 	}
 	ciphers := strings.Split(cipherToken, "-")
 	var cipherSuites []uint16
@@ -90,7 +90,7 @@ func parseExtensions(extensionToken string) ([]utls.TLSExtension, error) {
 	var extensions []utls.TLSExtension
 	extensionToken = cleanup(extensionToken)
 	if extensionToken == "" {
-		return nil, errors.New("no extensions provided")
+		return nil, errkit.New("no extensions provided")
 	}
 	exts := strings.Split(extensionToken, "-")
 	for _, ext := range exts {
