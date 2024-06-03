@@ -247,10 +247,6 @@ func (d *DialWrap) dial(ctx context.Context) (net.Conn, error) {
 			ctx = subCtx
 		}
 	}
-	if len(d.ips) == 1 {
-		// use default dialer when there is only one ip
-		return d.dialer.DialContext(ctx, d.network, d.address)
-	}
 
 	if d.network == "tcp" && d.dualStack() {
 		return d.dialParallel(ctx, d.ipv4, d.ipv6, d.network, d.port)
