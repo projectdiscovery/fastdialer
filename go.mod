@@ -8,7 +8,7 @@ require (
 	github.com/docker/go-units v0.5.0
 	github.com/projectdiscovery/hmap v0.0.46
 	github.com/projectdiscovery/networkpolicy v0.0.8
-	github.com/projectdiscovery/retryabledns v1.0.62
+	github.com/projectdiscovery/retryabledns v1.0.63
 	github.com/projectdiscovery/utils v0.1.3
 	github.com/refraction-networking/utls v1.5.4
 	github.com/stretchr/testify v1.9.0
