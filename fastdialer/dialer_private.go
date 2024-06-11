@@ -386,7 +386,7 @@ func (d *Dialer) handleDialError(err error, opts *dialOptions) error {
 				} else {
 					count.Add(1)
 				}
-				d.dialTimeoutErrors.Set(opts.connHash(), count)
+				_ = d.dialTimeoutErrors.Set(opts.connHash(), count)
 
 				// update them to permament if they happened multiple times within 30s
 				if count.Load() > uint32(d.options.MaxTemporaryErrors) {
