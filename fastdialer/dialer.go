@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"net"
 	"strings"
+	"sync/atomic"
 
 	"github.com/Mzack9999/gcache"
 	gounit "github.com/docker/go-units"
@@ -53,14 +54,15 @@ type Dialer struct {
 	// memory typed cache
 	mDnsCache gcache.Cache[string, *retryabledns.DNSData]
 	// memory/disk untyped ([]byte) cache
-	hmDnsCache    *hybrid.HybridMap
-	hostsFileData *hybrid.HybridMap
-	dialerHistory *hybrid.HybridMap
-	dialerTLSData *hybrid.HybridMap
-	dialer        *net.Dialer
-	proxyDialer   *proxy.Dialer
-	networkpolicy *networkpolicy.NetworkPolicy
-	dialCache     gcache.Cache[string, *utils.DialWrap]
+	hmDnsCache        *hybrid.HybridMap
+	hostsFileData     *hybrid.HybridMap
+	dialerHistory     *hybrid.HybridMap
+	dialerTLSData     *hybrid.HybridMap
+	dialer            *net.Dialer
+	proxyDialer       *proxy.Dialer
+	networkpolicy     *networkpolicy.NetworkPolicy
+	dialCache         gcache.Cache[string, *utils.DialWrap]
+	dialTimeoutErrors gcache.Cache[string, *atomic.Uint32]
 }
 
 // NewDialer instance
@@ -158,7 +160,7 @@ func NewDialer(options Options) (*Dialer, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &Dialer{
+	d := &Dialer{
 		dnsclient:     dnsclient,
 		mDnsCache:     dnsCache,
 		hmDnsCache:    hmDnsCache,
@@ -170,7 +172,13 @@ func NewDialer(options Options) (*Dialer, error) {
 		options:       &options,
 		networkpolicy: np,
 		dialCache:     gcache.New[string, *utils.DialWrap](MaxDialCacheSize).Build(),
-	}, nil
+	}
+
+	if options.MaxTemporaryErrors > 0 && options.MaxTemporaryToPermanentDuration > 0 {
+		d.dialTimeoutErrors = gcache.New[string, *atomic.Uint32](MaxDialCacheSize).Expiration(options.MaxTemporaryToPermanentDuration).Build()
+	}
+
+	return d, nil
 }
 
 // Dial function compatible with net/http
@@ -273,7 +281,13 @@ func (d *Dialer) Close() {
 	if d.options.WithTLSData {
 		d.dialerTLSData.Close()
 	}
-	// donot close hosts file as it is meant to be shared
+	if d.dialCache != nil {
+		d.dialCache.Purge()
+	}
+	if d.dialTimeoutErrors != nil {
+		d.dialTimeoutErrors.Purge()
+	}
+	// do not close hosts file as it is meant to be shared
 }
 
 // GetDialedIP returns the ip dialed by the HTTP client
