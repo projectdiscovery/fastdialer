@@ -390,7 +390,7 @@ func (d *Dialer) handleDialError(err error, opts *dialOptions) error {
 
 				// update them to permament if they happened multiple times within 30s
 				if count.Load() > uint32(d.options.MaxTemporaryErrors) {
-					errx = errx.SetKind(errkit.ErrKindNetworkPermanent)
+					errx = errx.ResetKind().SetKind(errkit.ErrKindNetworkPermanent)
 				}
 			}
 		}
