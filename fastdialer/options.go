@@ -61,16 +61,22 @@ type Options struct {
 	OnDialCallback           func(hostname, IP string)
 	DisableZtlsFallback      bool
 	WithNetworkPolicyOptions *networkpolicy.Options
-	Logger                   *log.Logger // optional logger to log errors(like hostfile init error)
+	// optional logger to log errors(like hostfile init error)
+	Logger *log.Logger
+	// optional max temporary errors to mark as permanent
+	MaxTemporaryErrors              int
+	MaxTemporaryToPermanentDuration time.Duration
 }
 
 // DefaultOptions of the cache
 var DefaultOptions = Options{
-	BaseResolvers:   DefaultResolvers,
-	MaxRetries:      5,
-	HostsFile:       true,
-	ResolversFile:   true,
-	CacheType:       Disk,
-	DialerTimeout:   10 * time.Second,
-	DialerKeepAlive: 10 * time.Second,
+	BaseResolvers:                   DefaultResolvers,
+	MaxRetries:                      5,
+	HostsFile:                       true,
+	ResolversFile:                   true,
+	CacheType:                       Disk,
+	DialerTimeout:                   10 * time.Second,
+	DialerKeepAlive:                 10 * time.Second,
+	MaxTemporaryErrors:              30,
+	MaxTemporaryToPermanentDuration: time.Minute,
 }

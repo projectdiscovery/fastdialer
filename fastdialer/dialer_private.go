@@ -10,6 +10,7 @@ import (
 	"net"
 	"os"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/projectdiscovery/fastdialer/fastdialer/ja3/impersonate"
@@ -46,6 +47,20 @@ type dialOptions struct {
 	hostname string
 }
 
+// connHash returns a hash of the connection
+func (d *dialOptions) connHash() string {
+	return fmt.Sprintf("%s-%s", d.network, d.address)
+}
+
+// logAddress returns the address to be logged in case of error
+func (d *dialOptions) logAddress() string {
+	logAddress := d.hostname
+	if logAddress == "" {
+		logAddress = d.ips[0]
+	}
+	return net.JoinHostPort(logAddress, d.port)
+}
+
 func (d *Dialer) dial(ctx context.Context, opts *dialOptions) (conn net.Conn, err error) {
 	// add global timeout to context
 	ctx, cancel := context.WithTimeoutCause(ctx, d.options.DialerTimeout, ErrDialTimeout)
@@ -54,9 +69,8 @@ func (d *Dialer) dial(ctx context.Context, opts *dialOptions) (conn net.Conn, er
 	var hostname, port, fixedIP string
 	var IPS []string
 	// check if this is present in cache
-	dw, _ := d.dialCache.GetIFPresent(connHash(opts.network, opts.address))
-	if dw == nil {
-
+	dw, err := d.dialCache.GetIFPresent(opts.connHash())
+	if err != nil || dw == nil {
 		if strings.HasPrefix(opts.address, "[") {
 			closeBracketIndex := strings.Index(opts.address, "]")
 			if closeBracketIndex == -1 {
@@ -145,21 +159,21 @@ func (d *Dialer) dial(ctx context.Context, opts *dialOptions) (conn net.Conn, er
 		// only cache it if below conditions are met
 		// 1. it is already not present
 		// 2. it is a domain and not ip
-		// 3. it has more than 1 valid ip
+		// 3. it has at least 1 valid ip
 		// 4. proxy dialer is not set
 
 		dw, err = utils.NewDialWrap(d.dialer, IPS, opts.network, opts.address, opts.port)
 		if err != nil {
 			return nil, errkit.Wrap(err, "could not create dialwrap")
 		}
-		if err = d.dialCache.Set(connHash(opts.network, opts.address), dw); err != nil {
+		if err = d.dialCache.Set(opts.connHash(), dw); err != nil {
 			return nil, errkit.Wrap(err, "could not set dialwrap")
 		}
 	}
 	if dw != nil {
 		finalDialer = dw
 		// when using dw ip , network , port etc are preset
-		// so get any one of them to avoid breaking furthur logic
+		// so get any one of them to avoid breaking further logic
 		ip, port := dw.Address()
 		opts.ips = []string{ip}
 		opts.port = port
@@ -208,13 +222,6 @@ func (d *Dialer) dial(ctx context.Context, opts *dialOptions) (conn net.Conn, er
 func (d *Dialer) dialIPS(ctx context.Context, l4 l4dialer, opts *dialOptions) (conn net.Conn, err error) {
 	hostPort := net.JoinHostPort(opts.ips[0], opts.port)
 
-	// logAddress is the address that will be logged in case of error
-	logAddress := opts.hostname
-	if logAddress == "" {
-		logAddress = opts.ips[0]
-	}
-	logAddress += ":" + opts.port
-
 	if opts.shouldUseTLS {
 		tlsconfigCopy := opts.tlsconfig.Clone()
 
@@ -231,7 +238,7 @@ func (d *Dialer) dialIPS(ctx context.Context, l4 l4dialer, opts *dialOptions) (c
 		if opts.impersonateStrategy == impersonate.None {
 			l4Conn, err := l4.DialContext(ctx, opts.network, hostPort)
 			if err != nil {
-				return nil, handleDialError(err, logAddress)
+				return nil, d.handleDialError(err, opts)
 			}
 			TlsConn := tls.Client(l4Conn, tlsconfigCopy)
 			if err := TlsConn.HandshakeContext(ctx); err != nil {
@@ -241,7 +248,7 @@ func (d *Dialer) dialIPS(ctx context.Context, l4 l4dialer, opts *dialOptions) (c
 		} else {
 			nativeConn, err := l4.DialContext(ctx, opts.network, hostPort)
 			if err != nil {
-				return nil, handleDialError(err, logAddress)
+				return nil, d.handleDialError(err, opts)
 			}
 			// clone existing tls config
 			uTLSConfig := &utls.Config{
@@ -279,7 +286,7 @@ func (d *Dialer) dialIPS(ctx context.Context, l4 l4dialer, opts *dialOptions) (c
 		}
 		l4Conn, err := l4.DialContext(ctx, opts.network, hostPort)
 		if err != nil {
-			return nil, handleDialError(err, logAddress)
+			return nil, d.handleDialError(err, opts)
 		}
 		ztlsConn := ztls.Client(l4Conn, ztlsconfigCopy)
 		_, err = ctxutil.ExecFuncWithTwoReturns(ctx, func() (bool, error) {
@@ -314,10 +321,10 @@ func (d *Dialer) dialIPS(ctx context.Context, l4 l4dialer, opts *dialOptions) (c
 			case conn = <-connectionCh:
 			case err = <-errCh:
 			}
-			err = handleDialError(err, logAddress)
+			err = d.handleDialError(err, opts)
 		} else {
 			conn, err = l4.DialContext(ctx, opts.network, hostPort)
-			err = handleDialError(err, logAddress)
+			err = d.handleDialError(err, opts)
 		}
 	}
 	// fallback to ztls  in case of handshake error with chrome ciphers
@@ -342,7 +349,7 @@ func (d *Dialer) dialIPS(ctx context.Context, l4 l4dialer, opts *dialOptions) (c
 		ztlsconfigCopy.CipherSuites = ztls.ChromeCiphers
 		l4Conn, err := l4.DialContext(ctx, opts.network, hostPort)
 		if err != nil {
-			return nil, handleDialError(err, logAddress)
+			return nil, d.handleDialError(err, opts)
 		}
 		ztlsConn := ztls.Client(l4Conn, ztlsconfigCopy)
 		_, err = ctxutil.ExecFuncWithTwoReturns(ctx, func() (bool, error) {
@@ -357,28 +364,36 @@ func (d *Dialer) dialIPS(ctx context.Context, l4 l4dialer, opts *dialOptions) (c
 	return
 }
 
-// connHash returns a hash of the connection
-func connHash(network string, address string) string {
-	return fmt.Sprintf("%s-%s", network, address)
-}
-
 // handleDialError is a helper function to handle dial errors
 // it also adds address attribute to the error
-func handleDialError(err error, address string) error {
+func (d *Dialer) handleDialError(err error, opts *dialOptions) error {
 	if err == nil {
 		return nil
 	}
 	errx := errkit.FromError(err)
-	errx = errx.SetAttr(slog.Any("address", address))
-	// if error kind is not set, if it is i/o timeout, set it to temporary
-	if errx.Kind() == nil {
+	errx = errx.SetAttr(slog.Any("address", opts.logAddress()))
+
+	if errx.Kind() == errkit.ErrKindUnknown {
 		if errx.Cause() != nil && strings.Contains(errx.Cause().Error(), "i/o timeout") {
-			// TODO: this is a tough call, i/o timeout happens in both cases
-			// it could be either temporary or permanent internally i/o timeout
-			// is actually a context.DeadlineExceeded error but std lib has decided to keep legacy/original error
+			// mark timeout errors as temporary
 			errx = errx.SetKind(errkit.ErrKindNetworkTemporary)
+
+			if d.dialTimeoutErrors != nil {
+				count, err := d.dialTimeoutErrors.GetIFPresent(opts.connHash())
+				if err != nil {
+					count = &atomic.Uint32{}
+					count.Store(1)
+				} else {
+					count.Add(1)
+				}
+				d.dialTimeoutErrors.Set(opts.connHash(), count)
+
+				// update them to permament if they happened multiple times within 30s
+				if count.Load() > uint32(d.options.MaxTemporaryErrors) {
+					errx = errx.SetKind(errkit.ErrKindNetworkPermanent)
+				}
+			}
 		}
 	}
-	// TODO: parse and mark permanent or temporary errors
 	return errx
 }
