@@ -8,7 +8,6 @@ import (
 	"net"
 	"strings"
 	"sync/atomic"
-	"time"
 
 	"github.com/Mzack9999/gcache"
 	gounit "github.com/docker/go-units"
@@ -176,7 +175,7 @@ func NewDialer(options Options) (*Dialer, error) {
 	}
 
 	if options.MaxTemporaryErrors > 0 && options.MaxTemporaryToPermanentDuration > 0 {
-		d.dialTimeoutErrors = gcache.New[string, *atomic.Uint32](MaxDialCacheSize).Expiration(30 * time.Second).Build()
+		d.dialTimeoutErrors = gcache.New[string, *atomic.Uint32](MaxDialCacheSize).Expiration(options.MaxTemporaryToPermanentDuration).Build()
 	}
 
 	return d, nil
