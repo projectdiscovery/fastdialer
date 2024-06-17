@@ -61,6 +61,8 @@ type Options struct {
 	OnDialCallback           func(hostname, IP string)
 	DisableZtlsFallback      bool
 	WithNetworkPolicyOptions *networkpolicy.Options
+	// optional network policy override for sharing
+	NetworkPolicy *networkpolicy.NetworkPolicy
 	// optional logger to log errors(like hostfile init error)
 	Logger *log.Logger
 	// optional max temporary errors to mark as permanent
