@@ -11,6 +11,7 @@ import (
 
 	"github.com/Mzack9999/gcache"
 	gounit "github.com/docker/go-units"
+	"github.com/pkg/errors"
 	"github.com/projectdiscovery/fastdialer/fastdialer/ja3/impersonate"
 	"github.com/projectdiscovery/fastdialer/fastdialer/metafiles"
 	"github.com/projectdiscovery/fastdialer/fastdialer/utils"
@@ -140,26 +141,16 @@ func NewDialer(options Options) (*Dialer, error) {
 		return nil, err
 	}
 
-	var npOptions networkpolicy.Options
-	if options.WithNetworkPolicyOptions != nil {
-		npOptions = *options.WithNetworkPolicyOptions
+	var np *networkpolicy.NetworkPolicy
+	if options.NetworkPolicy != nil {
+		np = options.NetworkPolicy
+	} else {
+		np, err = createNetworkPolicy(options)
+		if err != nil {
+			return nil, errors.Wrap(err, "could not create network policy")
+		}
 	}
 
-	// Populate deny list if necessary
-	npOptions.DenyList = append(npOptions.DenyList, options.Deny...)
-	// Populate allow list if necessary
-	npOptions.AllowList = append(npOptions.AllowList, options.Allow...)
-
-	npOptions.AllowPortList = append(npOptions.AllowPortList, options.AllowPortList...)
-	npOptions.DenyPortList = append(npOptions.DenyPortList, options.DenyPortList...)
-
-	npOptions.AllowSchemeList = append(npOptions.AllowSchemeList, options.AllowSchemeList...)
-	npOptions.DenySchemeList = append(npOptions.DenySchemeList, options.DenySchemeList...)
-
-	np, err := networkpolicy.New(npOptions)
-	if err != nil {
-		return nil, err
-	}
 	d := &Dialer{
 		dnsclient:     dnsclient,
 		mDnsCache:     dnsCache,
@@ -179,6 +170,27 @@ func NewDialer(options Options) (*Dialer, error) {
 	}
 
 	return d, nil
+}
+
+func createNetworkPolicy(options Options) (*networkpolicy.NetworkPolicy, error) {
+	var npOptions networkpolicy.Options
+	if options.WithNetworkPolicyOptions != nil {
+		npOptions = *options.WithNetworkPolicyOptions
+	}
+
+	// Populate deny list if necessary
+	npOptions.DenyList = append(npOptions.DenyList, options.Deny...)
+	// Populate allow list if necessary
+	npOptions.AllowList = append(npOptions.AllowList, options.Allow...)
+
+	npOptions.AllowPortList = append(npOptions.AllowPortList, options.AllowPortList...)
+	npOptions.DenyPortList = append(npOptions.DenyPortList, options.DenyPortList...)
+
+	npOptions.AllowSchemeList = append(npOptions.AllowSchemeList, options.AllowSchemeList...)
+	npOptions.DenySchemeList = append(npOptions.DenySchemeList, options.DenySchemeList...)
+
+	np, err := networkpolicy.New(npOptions)
+	return np, err
 }
 
 // Dial function compatible with net/http
