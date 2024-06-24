@@ -6,9 +6,10 @@ require (
 	github.com/Mzack9999/gcache v0.0.0-20230410081825-519e28eab057
 	github.com/dimchansky/utfbom v1.1.1
 	github.com/docker/go-units v0.5.0
+	github.com/pkg/errors v0.9.1
 	github.com/projectdiscovery/hmap v0.0.47
 	github.com/projectdiscovery/networkpolicy v0.0.9
-	github.com/projectdiscovery/retryabledns v1.0.64
+	github.com/projectdiscovery/retryabledns v1.0.65
 	github.com/projectdiscovery/utils v0.1.4
 	github.com/refraction-networking/utls v1.5.4
 	github.com/stretchr/testify v1.9.0
@@ -36,7 +37,6 @@ require (
 	github.com/mattn/go-isatty v0.0.19 // indirect
 	github.com/microcosm-cc/bluemonday v1.0.25 // indirect
 	github.com/miekg/dns v1.1.56 // indirect
-	github.com/pkg/errors v0.9.1 // indirect
 	github.com/pmezard/go-difflib v1.0.0 // indirect
 	github.com/projectdiscovery/blackrock v0.0.1 // indirect
 	github.com/quic-go/quic-go v0.42.0 // indirect
