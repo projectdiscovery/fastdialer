@@ -10,7 +10,7 @@ require (
 	github.com/projectdiscovery/hmap v0.0.47
 	github.com/projectdiscovery/networkpolicy v0.0.9
 	github.com/projectdiscovery/retryabledns v1.0.65
-	github.com/projectdiscovery/utils v0.1.4
+	github.com/projectdiscovery/utils v0.1.5
 	github.com/refraction-networking/utls v1.5.4
 	github.com/stretchr/testify v1.9.0
 	github.com/tarunKoyalwar/goleak v0.0.0-20240429141123-0efa90dbdcf9
