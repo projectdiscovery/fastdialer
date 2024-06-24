@@ -94,8 +94,8 @@ github.com/pmezard/go-difflib v1.0.0 h1:4DBwDE0NGyQoBHbLQYPwSUPoCMWR5BEzIk/f1lZb
 github.com/pmezard/go-difflib v1.0.0/go.mod h1:iKH77koFhYxTK1pcRnkKkqfTogsbg7gZNVY4sRDYZ/4=
 github.com/projectdiscovery/blackrock v0.0.1 h1:lHQqhaaEFjgf5WkuItbpeCZv2DUIE45k0VbGJyft6LQ=
 github.com/projectdiscovery/blackrock v0.0.1/go.mod h1:ANUtjDfaVrqB453bzToU+YB4cUbvBRpLvEwoWIwlTss=
-github.com/projectdiscovery/hmap v0.0.47 h1:NdakfvlFruevnOvehdllofg/hc0CQn2WQaLHaRcsGAk=
-github.com/projectdiscovery/hmap v0.0.47/go.mod h1:/9V6EnyTY33hAy71Quox6Ggu9ZkKp36tgepBh/NzNSg=
+github.com/projectdiscovery/hmap v0.0.48 h1:pbxoDcwZWSdaqZ3QgaG5Aw1G1qEFN2zeQco6eWeROAo=
+github.com/projectdiscovery/hmap v0.0.48/go.mod h1:KMSbPJoIgI+9PkG6alZ0INEMRiIGnND128RUjxiY+8I=
 github.com/projectdiscovery/networkpolicy v0.0.9 h1:IrlDoYZagNNO8y+7iZeHT8k5izE+nek7TdtvEBwCxqk=
 github.com/projectdiscovery/networkpolicy v0.0.9/go.mod h1:XFJ2Lnv8BE/ziQCFjBHMsH1w6VmkPiQtk+NlBpdMU7M=
 github.com/projectdiscovery/retryabledns v1.0.65 h1:wOtMuVkrcrGkzaT8Jixb3BtUcJODXLRz+z9EjftmFsQ=
