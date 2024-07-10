@@ -178,7 +178,7 @@ func (d *Dialer) dial(ctx context.Context, opts *dialOptions) (conn net.Conn, er
 		opts.ips = []string{ip}
 		opts.port = port
 		// also set hostname by parsing it from address
-		hostname, _, _ := net.SplitHostPort(opts.address)
+		hostname, _, _ = net.SplitHostPort(opts.address)
 		opts.hostname = hostname
 	}
 
