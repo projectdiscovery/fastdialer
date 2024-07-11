@@ -3,6 +3,7 @@ package tests
 import (
 	"context"
 	"crypto/tls"
+	"net"
 	"net/http"
 	"sync"
 	"testing"
@@ -127,6 +128,28 @@ func TestFastDialerDomainMultiIP(t *testing.T) {
 		require.Nil(t, err)
 		require.NotNil(t, conn)
 		_ = conn.Close()
+	})
+
+	t.Run("Dial TCP Domain with port 80", func(t *testing.T) {
+		t.Parallel()
+		opts.WithDialerHistory = true
+		fdN, err := fastdialer.NewDialer(opts)
+		require.Nil(t, err)
+		defer fdN.Close()
+
+		var connN net.Conn
+		ctx := context.TODO()
+		target := "projectdiscovery.io"
+		connN, err = fdN.DialTLS(ctx, "tcp", target+":80")
+		require.NotNil(t, err)
+		require.Nil(t, connN)
+
+		connN, err = fdN.Dial(ctx, "tcp", target+":80")
+		require.Nil(t, err)
+		defer connN.Close()
+
+		require.NotNil(t, connN)
+		require.NotEmpty(t, fdN.GetDialedIP(target))
 	})
 }
 
