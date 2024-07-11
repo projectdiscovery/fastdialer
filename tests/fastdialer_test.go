@@ -3,6 +3,7 @@ package tests
 import (
 	"context"
 	"crypto/tls"
+	"net"
 	"net/http"
 	"sync"
 	"testing"
@@ -88,6 +89,26 @@ func TestFastDialerDomains(t *testing.T) {
 		require.NotNil(t, conn)
 		_ = conn.Close()
 	})
+
+	t.Run("Dial TCP Domain with port 80", func(t *testing.T) {
+		t.Parallel()
+		opts.WithDialerHistory = true
+		fd, err = fastdialer.NewDialer(opts)
+		require.Nil(t, err)
+
+		var conn net.Conn
+		ctx := context.TODO()
+		target := "scanme.sh"
+		conn, err = fd.DialTLS(ctx, "tcp", target+":80")
+		require.NotNil(t, err)
+		require.Nil(t, conn)
+
+		conn, err = fd.Dial(ctx, "tcp", target+":80")
+		require.Nil(t, err)
+		require.NotNil(t, conn)
+		require.NotEmpty(t, fd.GetDialedIP(target))
+		_ = conn.Close()
+	})
 }
 
 func TestFastDialerDomainMultiIP(t *testing.T) {
@@ -126,6 +147,26 @@ func TestFastDialerDomainMultiIP(t *testing.T) {
 		conn, err := fd.DialTLS(context.TODO(), "tcp", "projectdiscovery.io:443")
 		require.Nil(t, err)
 		require.NotNil(t, conn)
+		_ = conn.Close()
+	})
+
+	t.Run("Dial TCP Domain with port 80", func(t *testing.T) {
+		t.Parallel()
+		opts.WithDialerHistory = true
+		fd, err = fastdialer.NewDialer(opts)
+		require.Nil(t, err)
+
+		var conn net.Conn
+		ctx := context.TODO()
+		target := "projectdiscovery.io"
+		conn, err = fd.DialTLS(ctx, "tcp", target+":80")
+		require.NotNil(t, err)
+		require.Nil(t, conn)
+
+		conn, err = fd.Dial(ctx, "tcp", target+":80")
+		require.Nil(t, err)
+		require.NotNil(t, conn)
+		require.NotEmpty(t, fd.GetDialedIP(target))
 		_ = conn.Close()
 	})
 }
