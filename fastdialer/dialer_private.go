@@ -267,6 +267,8 @@ func (d *Dialer) dialIPS(ctx context.Context, l4 l4dialer, opts *dialOptions) (c
 				if err := uTLSConn.ApplyPreset(&clientHelloSpec); err != nil {
 					return nil, err
 				}
+			} else if opts.impersonateStrategy == impersonate.Chrome {
+				uTLSConn = utls.UClient(nativeConn, uTLSConfig, utls.HelloChrome_106_Shuffle)
 			}
 			if err := uTLSConn.Handshake(); err != nil {
 				return nil, err

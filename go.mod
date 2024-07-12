@@ -11,7 +11,7 @@ require (
 	github.com/projectdiscovery/networkpolicy v0.0.9
 	github.com/projectdiscovery/retryabledns v1.0.66
 	github.com/projectdiscovery/utils v0.2.0
-	github.com/refraction-networking/utls v1.5.4
+	github.com/refraction-networking/utls v1.6.7
 	github.com/stretchr/testify v1.9.0
 	github.com/tarunKoyalwar/goleak v0.0.0-20240429141123-0efa90dbdcf9
 	github.com/zmap/zcrypto v0.0.0-20230422215203-9a665e1e9968
@@ -29,17 +29,16 @@ require (
 	github.com/davecgh/go-spew v1.1.1 // indirect
 	github.com/fsnotify/fsnotify v1.6.0 // indirect
 	github.com/gaissmai/bart v0.9.5 // indirect
-	github.com/gaukas/godicttls v0.0.4 // indirect
 	github.com/golang/snappy v0.0.4 // indirect
 	github.com/gorilla/css v1.0.0 // indirect
-	github.com/klauspost/compress v1.16.7 // indirect
+	github.com/klauspost/compress v1.17.4 // indirect
 	github.com/logrusorgru/aurora/v4 v4.0.0 // indirect
 	github.com/mattn/go-isatty v0.0.19 // indirect
 	github.com/microcosm-cc/bluemonday v1.0.25 // indirect
 	github.com/miekg/dns v1.1.56 // indirect
+	github.com/onsi/gomega v1.27.6 // indirect
 	github.com/pmezard/go-difflib v1.0.0 // indirect
 	github.com/projectdiscovery/blackrock v0.0.1 // indirect
-	github.com/quic-go/quic-go v0.42.0 // indirect
 	github.com/saintfish/chardet v0.0.0-20230101081208-5e3ef4b5456d // indirect
 	github.com/syndtr/goleveldb v1.0.0 // indirect
 	github.com/tidwall/btree v1.4.3 // indirect
