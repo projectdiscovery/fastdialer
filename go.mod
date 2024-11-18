@@ -9,8 +9,8 @@ require (
 	github.com/pkg/errors v0.9.1
 	github.com/projectdiscovery/hmap v0.0.67
 	github.com/projectdiscovery/networkpolicy v0.0.9
-	github.com/projectdiscovery/retryabledns v1.0.83
-	github.com/projectdiscovery/utils v0.2.18
+	github.com/projectdiscovery/retryabledns v1.0.84
+	github.com/projectdiscovery/utils v0.2.19
 	github.com/refraction-networking/utls v1.6.7
 	github.com/stretchr/testify v1.9.0
 	github.com/tarunKoyalwar/goleak v0.0.0-20240429141123-0efa90dbdcf9
