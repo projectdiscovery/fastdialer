@@ -105,22 +105,22 @@ func (d *Dialer) dial(ctx context.Context, opts *dialOptions) (conn net.Conn, er
 
 		// check if data is in cache
 		hostname = asAscii(hostname)
-		data, err := d.GetDNSData(hostname)
-		if err != nil {
-			// otherwise attempt to retrieve it
-			data, err = d.dnsclient.Resolve(hostname)
-		}
-		if data == nil {
-			return nil, ResolveHostError
-		}
-		if err != nil || len(data.A)+len(data.AAAA) == 0 {
-			return nil, NoAddressFoundError
-		}
 
 		// use fixed ip as first
 		if fixedIP != "" {
 			IPS = append(IPS, fixedIP)
 		} else {
+			data, err := d.GetDNSData(hostname)
+			if err != nil {
+				// otherwise attempt to retrieve it
+				data, err = d.dnsclient.Resolve(hostname)
+			}
+			if data == nil {
+				return nil, ResolveHostError
+			}
+			if err != nil || len(data.A)+len(data.AAAA) == 0 {
+				return nil, NoAddressFoundError
+			}
 			IPS = append(IPS, append(data.A, data.AAAA...)...)
 		}
 
