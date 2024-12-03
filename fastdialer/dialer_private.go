@@ -15,6 +15,7 @@ import (
 
 	"github.com/projectdiscovery/fastdialer/fastdialer/ja3/impersonate"
 	"github.com/projectdiscovery/fastdialer/fastdialer/utils"
+	retryabledns "github.com/projectdiscovery/retryabledns"
 	ctxutil "github.com/projectdiscovery/utils/context"
 	cryptoutil "github.com/projectdiscovery/utils/crypto"
 	"github.com/projectdiscovery/utils/errkit"
@@ -110,14 +111,14 @@ func (d *Dialer) dial(ctx context.Context, opts *dialOptions) (conn net.Conn, er
 		if fixedIP != "" {
 			IPS = append(IPS, fixedIP)
 		} else {
-			data, err := d.GetDNSData(hostname)
-			if err != nil {
-				// otherwise attempt to retrieve it
-				data, err = d.dnsclient.Resolve(hostname)
-			}
-			if data == nil {
+			cacheData, err, _ := d.resolutionsGroup.Do(hostname, func() (interface{}, error) {
+				return d.GetDNSData(hostname)
+			})
+
+			if cacheData == nil {
 				return nil, ResolveHostError
 			}
+			data := cacheData.(*retryabledns.DNSData)
 			if err != nil || len(data.A)+len(data.AAAA) == 0 {
 				return nil, NoAddressFoundError
 			}
@@ -161,7 +162,6 @@ func (d *Dialer) dial(ctx context.Context, opts *dialOptions) (conn net.Conn, er
 		// 2. it is a domain and not ip
 		// 3. it has at least 1 valid ip
 		// 4. proxy dialer is not set
-
 		dw, err = utils.NewDialWrap(d.dialer, IPS, opts.network, opts.address, opts.port)
 		if err != nil {
 			return nil, errkit.Wrap(err, "could not create dialwrap")
