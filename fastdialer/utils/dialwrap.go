@@ -137,11 +137,14 @@ func (d *DialWrap) DialContext(ctx context.Context, _ string, _ string) (net.Con
 }
 
 // firstFlight is a singleflight pattern implementation
+// TODO: remove singleflight pattern
 func (d *DialWrap) firstFlight(ctx context.Context) chan *dialResult {
 	size := len(d.ipv4) + len(d.ipv6)
 	ch := make(chan *dialResult, size)
 	d.mu.Lock()
 	if d.dups > 0 {
+		// allow stuck routines to exit and proceed with default dial
+		defer close(ch)
 		d.mu.Unlock()
 		d.wg.Wait()
 		return ch
