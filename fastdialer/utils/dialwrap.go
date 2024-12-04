@@ -101,18 +101,10 @@ func NewDialWrap(dialer *net.Dialer, ips []string, network, address, port string
 
 // DialContext is the main entry point for dialing
 func (d *DialWrap) DialContext(ctx context.Context, _ string, _ string) (net.Conn, error) {
-	if d.completedFirstFlight.Load() {
-		// if first flight completed and it failed due to other reasons
-		// and not due to context cancellation
-		if d.err != nil && !errkit.Is(d.err, ErrInflightCancel) && !errkit.Is(d.err, context.Canceled) {
-			return nil, d.err
-		}
-		return d.dial(ctx)
-	}
 	select {
 	case <-ctx.Done():
 		return nil, errkit.Append(ErrInflightCancel, ctx.Err())
-	case res, ok := <-d.firstFlight(ctx):
+	case res, ok := <-d.doFirstFlight(ctx):
 		if !ok {
 			// closed channel so depending on the error
 			// either dial new or return the error
@@ -133,12 +125,19 @@ func (d *DialWrap) DialContext(ctx context.Context, _ string, _ string) (net.Con
 			return nil, d.err
 		}
 		return nil, res.error
+	case <-d.hasCompletedFirstFlight():
+		// if first flight completed and it failed due to other reasons
+		// and not due to context cancellation
+		if d.err != nil && !errkit.Is(d.err, ErrInflightCancel) && !errkit.Is(d.err, context.Canceled) {
+			return nil, d.err
+		}
+		return d.dial(ctx)
 	}
 }
 
 // firstFlight is a singleflight pattern implementation
 // TODO: remove singleflight pattern
-func (d *DialWrap) firstFlight(ctx context.Context) chan *dialResult {
+func (d *DialWrap) doFirstFlight(ctx context.Context) chan *dialResult {
 	size := len(d.ipv4) + len(d.ipv6)
 	ch := make(chan *dialResult, size)
 	d.mu.Lock()
@@ -168,6 +167,15 @@ func (d *DialWrap) firstFlight(ctx context.Context) chan *dialResult {
 		ch <- conn
 	}
 	return ch
+}
+
+func (d *DialWrap) hasCompletedFirstFlight() chan struct{} {
+	if d.completedFirstFlight.Load() {
+		ch := make(chan struct{})
+		close(ch)
+		return ch
+	}
+	return nil
 }
 
 // dialAllParallel connects to all the given addresses in parallel, returning
