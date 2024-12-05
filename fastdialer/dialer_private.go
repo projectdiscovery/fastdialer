@@ -15,12 +15,14 @@ import (
 
 	"github.com/projectdiscovery/fastdialer/fastdialer/ja3/impersonate"
 	"github.com/projectdiscovery/fastdialer/fastdialer/utils"
+	retryabledns "github.com/projectdiscovery/retryabledns"
 	ctxutil "github.com/projectdiscovery/utils/context"
 	cryptoutil "github.com/projectdiscovery/utils/crypto"
 	"github.com/projectdiscovery/utils/errkit"
 	iputil "github.com/projectdiscovery/utils/ip"
 	ptrutil "github.com/projectdiscovery/utils/ptr"
 	utls "github.com/refraction-networking/utls"
+	"github.com/rs/xid"
 	ztls "github.com/zmap/zcrypto/tls"
 )
 
@@ -63,8 +65,17 @@ func (d *dialOptions) logAddress() string {
 
 func (d *Dialer) dial(ctx context.Context, opts *dialOptions) (conn net.Conn, err error) {
 	// add global timeout to context
-	ctx, cancel := context.WithTimeoutCause(ctx, d.options.DialerTimeout, ErrDialTimeout)
+	id := xid.New().String()
+	ctxId := context.WithValue(ctx, "id", id)
+
+	ctx, cancel := context.WithTimeoutCause(ctxId, d.options.DialerTimeout, ErrDialTimeout)
 	defer cancel()
+
+	deadline, ok := ctx.Deadline()
+	now := time.Now()
+	utils.AppendLog(id, fmt.Sprintf(`dialer.dial
+	now: %s
+	deadline, ok: %v %v`, now, deadline, ok))
 
 	var hostname, port, fixedIP string
 	var IPS []string
@@ -110,14 +121,14 @@ func (d *Dialer) dial(ctx context.Context, opts *dialOptions) (conn net.Conn, er
 		if fixedIP != "" {
 			IPS = append(IPS, fixedIP)
 		} else {
-			data, err := d.GetDNSData(hostname)
-			if err != nil {
-				// otherwise attempt to retrieve it
-				data, err = d.dnsclient.Resolve(hostname)
-			}
-			if data == nil {
+			cacheData, err, _ := d.resolutionsGroup.Do(hostname, func() (interface{}, error) {
+				return d.GetDNSData(hostname)
+			})
+
+			if cacheData == nil {
 				return nil, ResolveHostError
 			}
+			data := cacheData.(*retryabledns.DNSData)
 			if err != nil || len(data.A)+len(data.AAAA) == 0 {
 				return nil, NoAddressFoundError
 			}
@@ -161,7 +172,6 @@ func (d *Dialer) dial(ctx context.Context, opts *dialOptions) (conn net.Conn, er
 		// 2. it is a domain and not ip
 		// 3. it has at least 1 valid ip
 		// 4. proxy dialer is not set
-
 		dw, err = utils.NewDialWrap(d.dialer, IPS, opts.network, opts.address, opts.port)
 		if err != nil {
 			return nil, errkit.Wrap(err, "could not create dialwrap")
@@ -325,7 +335,18 @@ func (d *Dialer) dialIPS(ctx context.Context, l4 l4dialer, opts *dialOptions) (c
 			}
 			err = d.handleDialError(err, opts)
 		} else {
+			id := fmt.Sprint(ctx.Value("id"))
+			deadline, ok := ctx.Deadline()
+			now := time.Now()
+			utils.AppendLog(id, fmt.Sprintf(`dialer.dialIPS.start
+			now: %s
+			deadline, ok: %v %v`, now, deadline, ok))
 			conn, err = l4.DialContext(ctx, opts.network, hostPort)
+			n := time.Now()
+			utils.AppendLog(id, fmt.Sprintf(`dialer.dialIPS.end
+			now: %s
+			conn: %v
+			err: %v`, n, conn, err))
 			err = d.handleDialError(err, opts)
 		}
 	}
