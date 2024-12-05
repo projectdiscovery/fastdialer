@@ -22,6 +22,7 @@ import (
 	iputil "github.com/projectdiscovery/utils/ip"
 	ptrutil "github.com/projectdiscovery/utils/ptr"
 	utls "github.com/refraction-networking/utls"
+	"github.com/rs/xid"
 	ztls "github.com/zmap/zcrypto/tls"
 )
 
@@ -64,8 +65,17 @@ func (d *dialOptions) logAddress() string {
 
 func (d *Dialer) dial(ctx context.Context, opts *dialOptions) (conn net.Conn, err error) {
 	// add global timeout to context
-	ctx, cancel := context.WithTimeoutCause(ctx, d.options.DialerTimeout, ErrDialTimeout)
+	id := xid.New().String()
+	ctxId := context.WithValue(ctx, "id", id)
+
+	ctx, cancel := context.WithTimeoutCause(ctxId, d.options.DialerTimeout, ErrDialTimeout)
 	defer cancel()
+
+	deadline, ok := ctx.Deadline()
+	now := time.Now()
+	utils.AppendLog(id, fmt.Sprintf(`dialer.dial
+	now: %s
+	deadline, ok: %v %v`, now, deadline, ok))
 
 	var hostname, port, fixedIP string
 	var IPS []string
@@ -325,7 +335,18 @@ func (d *Dialer) dialIPS(ctx context.Context, l4 l4dialer, opts *dialOptions) (c
 			}
 			err = d.handleDialError(err, opts)
 		} else {
+			id := fmt.Sprint(ctx.Value("id"))
+			deadline, ok := ctx.Deadline()
+			now := time.Now()
+			utils.AppendLog(id, fmt.Sprintf(`dialer.dialIPS.start
+			now: %s
+			deadline, ok: %v %v`, now, deadline, ok))
 			conn, err = l4.DialContext(ctx, opts.network, hostPort)
+			n := time.Now()
+			utils.AppendLog(id, fmt.Sprintf(`dialer.dialIPS.end
+			now: %s
+			conn: %v
+			err: %v`, n, conn, err))
 			err = d.handleDialError(err, opts)
 		}
 	}
