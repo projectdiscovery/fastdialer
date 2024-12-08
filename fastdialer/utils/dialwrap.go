@@ -61,14 +61,15 @@ type DialWrap struct {
 	network string
 	address string
 	port    string
-	// below fields implement a singleflight like pattern
-	// where first connection is established and subsequent calls receive
-	// a shared result
-	wg                   sync.WaitGroup
-	mu                   sync.Mutex
-	completedFirstFlight *atomic.Bool
-	dups                 uint8
-	err                  error // error returned by first flight
+
+	// all connections blocks until a first connection is established
+	// subsequent calls will behave upon first result
+	busyFirstConnection      *atomic.Bool
+	completedFirstConnection *atomic.Bool
+	firstConnectionDuration  time.Duration
+	mu                       sync.RWMutex
+	// error returned by first connection
+	err error
 }
 
 // NewDialWrap creates a new dial wrap instance and returns it.
@@ -88,31 +89,22 @@ func NewDialWrap(dialer *net.Dialer, ips []string, network, address, port string
 		return nil, ErrNoIPs
 	}
 	return &DialWrap{
-		dialer:               dialer,
-		ipv4:                 ipv4,
-		ipv6:                 ipv6,
-		ips:                  valid,
-		completedFirstFlight: &atomic.Bool{},
-		network:              network,
-		address:              address,
-		port:                 port,
+		dialer:                   dialer,
+		ipv4:                     ipv4,
+		ipv6:                     ipv6,
+		ips:                      valid,
+		completedFirstConnection: &atomic.Bool{},
+		busyFirstConnection:      &atomic.Bool{},
+		network:                  network,
+		address:                  address,
+		port:                     port,
 	}, nil
 }
 
 // DialContext is the main entry point for dialing
 func (d *DialWrap) DialContext(ctx context.Context, _ string, _ string) (net.Conn, error) {
-	if d.completedFirstFlight.Load() {
-		// if first flight completed and it failed due to other reasons
-		// and not due to context cancellation
-		if d.err != nil && !errkit.Is(d.err, ErrInflightCancel) && !errkit.Is(d.err, context.Canceled) {
-			return nil, d.err
-		}
-		return d.dial(ctx)
-	}
 	select {
-	case <-ctx.Done():
-		return nil, errkit.Append(ErrInflightCancel, ctx.Err())
-	case res, ok := <-d.firstFlight(ctx):
+	case res, ok := <-d.doFirstConnection(ctx):
 		if !ok {
 			// closed channel so depending on the error
 			// either dial new or return the error
@@ -133,27 +125,35 @@ func (d *DialWrap) DialContext(ctx context.Context, _ string, _ string) (net.Con
 			return nil, d.err
 		}
 		return nil, res.error
+	case <-d.hasCompletedFirstConnection(ctx):
+		// if first connection completed and it failed due to other reasons
+		// and not due to context cancellation
+		if d.err != nil && !errkit.Is(d.err, ErrInflightCancel) && !errkit.Is(d.err, context.Canceled) {
+			return nil, d.err
+		}
+		return d.dial(ctx)
+	case <-ctx.Done():
+		return nil, errkit.Append(ErrInflightCancel, ctx.Err())
 	}
 }
 
-// firstFlight is a singleflight pattern implementation
-func (d *DialWrap) firstFlight(ctx context.Context) chan *dialResult {
+func (d *DialWrap) doFirstConnection(ctx context.Context) chan *dialResult {
+	if d.busyFirstConnection.Load() {
+		return nil
+	}
+	d.busyFirstConnection.Store(true)
+	now := time.Now()
+	defer func() {
+		d.SetFirstConnectionDuration(time.Since(now))
+	}()
+
 	size := len(d.ipv4) + len(d.ipv6)
 	ch := make(chan *dialResult, size)
-	d.mu.Lock()
-	if d.dups > 0 {
-		d.mu.Unlock()
-		d.wg.Wait()
-		return ch
-	}
-	d.dups++
-	d.wg.Add(1)
-	d.mu.Unlock()
-	defer d.wg.Done()
+
 	// dial parallel
 	conns, err := d.dialAllParallel(ctx)
 	defer func() {
-		d.completedFirstFlight.Store(true)
+		d.completedFirstConnection.Store(true)
 		close(ch)
 	}()
 	if err != nil {
@@ -164,6 +164,27 @@ func (d *DialWrap) firstFlight(ctx context.Context) chan *dialResult {
 	for _, conn := range conns {
 		ch <- conn
 	}
+	return ch
+}
+
+func (d *DialWrap) hasCompletedFirstConnection(ctx context.Context) chan struct{} {
+	ch := make(chan struct{}, 1)
+
+	go func() {
+		defer close(ch)
+		for {
+			if d.completedFirstConnection.Load() {
+				ch <- struct{}{}
+				return
+			}
+			select {
+			case <-ctx.Done():
+				return
+			default:
+			}
+		}
+	}()
+
 	return ch
 }
 
@@ -261,11 +282,12 @@ func (d *DialWrap) dial(ctx context.Context) (net.Conn, error) {
 //
 // Or zero, if none of Timeout, Deadline, or context's deadline is set.
 func (d *DialWrap) deadline(ctx context.Context, now time.Time) (earliest time.Time) {
-	if d.dialer.Timeout != 0 { // including negative, for historical reasons
-		earliest = now.Add(d.dialer.Timeout)
+	// including negative, for historical reasons
+	if d.dialer.Timeout != 0 {
+		earliest = now.Add(d.dialer.Timeout + d.FirstConnectionTook())
 	}
-	if d, ok := ctx.Deadline(); ok {
-		earliest = minNonzeroTime(earliest, d)
+	if de, ok := ctx.Deadline(); ok {
+		earliest = minNonzeroTime(earliest, de.Add(d.FirstConnectionTook()))
 	}
 	return earliest
 }
@@ -407,4 +429,18 @@ func minNonzeroTime(a, b time.Time) time.Time {
 		return a
 	}
 	return b
+}
+
+func (d *DialWrap) FirstConnectionTook() time.Duration {
+	d.mu.RLock()
+	defer d.mu.RUnlock()
+
+	return d.firstConnectionDuration
+}
+
+func (d *DialWrap) SetFirstConnectionDuration(dur time.Duration) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+
+	d.firstConnectionDuration = dur
 }

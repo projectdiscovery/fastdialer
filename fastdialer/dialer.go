@@ -8,6 +8,9 @@ import (
 	"net"
 	"strings"
 	"sync/atomic"
+	"time"
+
+	"golang.org/x/sync/singleflight"
 
 	"github.com/Mzack9999/gcache"
 	gounit "github.com/docker/go-units"
@@ -64,6 +67,8 @@ type Dialer struct {
 	networkpolicy     *networkpolicy.NetworkPolicy
 	dialCache         gcache.Cache[string, *utils.DialWrap]
 	dialTimeoutErrors gcache.Cache[string, *atomic.Uint32]
+
+	resolutionsGroup *singleflight.Group
 }
 
 // NewDialer instance
@@ -136,7 +141,11 @@ func NewDialer(options Options) (*Dialer, error) {
 			options.Logger.Printf("could not load hosts file: %s\n", err)
 		}
 	}
-	dnsclient, err := retryabledns.New(resolvers, options.MaxRetries)
+	dnsclient, err := retryabledns.NewWithOptions(retryabledns.Options{
+		BaseResolvers: resolvers,
+		MaxRetries:    options.MaxRetries,
+		Timeout:       1 * time.Second,
+	})
 	if err != nil {
 		return nil, err
 	}
@@ -152,17 +161,18 @@ func NewDialer(options Options) (*Dialer, error) {
 	}
 
 	d := &Dialer{
-		dnsclient:     dnsclient,
-		mDnsCache:     dnsCache,
-		hmDnsCache:    hmDnsCache,
-		hostsFileData: hostsFileData,
-		dialerHistory: dialerHistory,
-		dialerTLSData: dialerTLSData,
-		dialer:        dialer,
-		proxyDialer:   options.ProxyDialer,
-		options:       &options,
-		networkpolicy: np,
-		dialCache:     gcache.New[string, *utils.DialWrap](MaxDialCacheSize).Build(),
+		dnsclient:        dnsclient,
+		mDnsCache:        dnsCache,
+		hmDnsCache:       hmDnsCache,
+		hostsFileData:    hostsFileData,
+		dialerHistory:    dialerHistory,
+		dialerTLSData:    dialerTLSData,
+		dialer:           dialer,
+		proxyDialer:      options.ProxyDialer,
+		options:          &options,
+		networkpolicy:    np,
+		dialCache:        gcache.New[string, *utils.DialWrap](MaxDialCacheSize).Build(),
+		resolutionsGroup: &singleflight.Group{},
 	}
 
 	if options.MaxTemporaryErrors > 0 && options.MaxTemporaryToPermanentDuration > 0 {
