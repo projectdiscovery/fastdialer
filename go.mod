@@ -7,13 +7,13 @@ require (
 	github.com/dimchansky/utfbom v1.1.1
 	github.com/docker/go-units v0.5.0
 	github.com/pkg/errors v0.9.1
+	github.com/projectdiscovery/goleak v0.0.0-20240729222606-a7d18edc33f8
 	github.com/projectdiscovery/hmap v0.0.69
 	github.com/projectdiscovery/networkpolicy v0.0.9
 	github.com/projectdiscovery/retryabledns v1.0.87
 	github.com/projectdiscovery/utils v0.3.0
 	github.com/refraction-networking/utls v1.6.7
 	github.com/stretchr/testify v1.9.0
-	github.com/tarunKoyalwar/goleak v0.0.0-20240429141123-0efa90dbdcf9
 	github.com/zmap/zcrypto v0.0.0-20230422215203-9a665e1e9968
 	golang.org/x/exp v0.0.0-20221205204356-47842c84f3db
 	golang.org/x/net v0.29.0

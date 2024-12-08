@@ -167,7 +167,7 @@ func (d *DialWrap) doFirstConnection(ctx context.Context) chan *dialResult {
 }
 
 func (d *DialWrap) hasCompletedFirstConnection(ctx context.Context) chan struct{} {
-	ch := make(chan struct{})
+	ch := make(chan struct{}, 1)
 
 	go func() {
 		defer close(ch)

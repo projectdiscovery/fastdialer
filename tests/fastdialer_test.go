@@ -10,8 +10,8 @@ import (
 	"time"
 
 	"github.com/projectdiscovery/fastdialer/fastdialer"
+	"github.com/projectdiscovery/goleak"
 	"github.com/stretchr/testify/require"
-	"github.com/tarunKoyalwar/goleak"
 )
 
 func TestFastDialerIP(t *testing.T) {
