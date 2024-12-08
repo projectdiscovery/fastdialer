@@ -66,7 +66,8 @@ type DialWrap struct {
 	// subsequent calls will behave upon first result
 	busyFirstConnection      *atomic.Bool
 	completedFirstConnection *atomic.Bool
-	firstConnectionTook      time.Duration
+	firstConnectionDuration  time.Duration
+	mu                       sync.RWMutex
 	// error returned by first connection
 	err error
 }
@@ -143,7 +144,7 @@ func (d *DialWrap) doFirstConnection(ctx context.Context) chan *dialResult {
 	d.busyFirstConnection.Store(true)
 	now := time.Now()
 	defer func() {
-		d.firstConnectionTook = time.Since(now)
+		d.SetFirstConnectionDuration(time.Since(now))
 	}()
 
 	size := len(d.ipv4) + len(d.ipv6)
@@ -283,10 +284,10 @@ func (d *DialWrap) dial(ctx context.Context) (net.Conn, error) {
 func (d *DialWrap) deadline(ctx context.Context, now time.Time) (earliest time.Time) {
 	// including negative, for historical reasons
 	if d.dialer.Timeout != 0 {
-		earliest = now.Add(d.dialer.Timeout + d.firstConnectionTook)
+		earliest = now.Add(d.dialer.Timeout + d.FirstConnectionTook())
 	}
 	if de, ok := ctx.Deadline(); ok {
-		earliest = minNonzeroTime(earliest, de.Add(d.firstConnectionTook))
+		earliest = minNonzeroTime(earliest, de.Add(d.FirstConnectionTook()))
 	}
 	return earliest
 }
@@ -428,4 +429,18 @@ func minNonzeroTime(a, b time.Time) time.Time {
 		return a
 	}
 	return b
+}
+
+func (d *DialWrap) FirstConnectionTook() time.Duration {
+	d.mu.RLock()
+	defer d.mu.RUnlock()
+
+	return d.firstConnectionDuration
+}
+
+func (d *DialWrap) SetFirstConnectionDuration(dur time.Duration) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+
+	d.firstConnectionDuration = dur
 }
