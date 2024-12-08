@@ -26,3 +26,4 @@ jobs:
         run: |
           go run -race example/simple/main.go
           go run -race example/impersonate/main.go
+          go run -race example/concurrent/concurrent.go

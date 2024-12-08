@@ -2,10 +2,7 @@ package utils
 
 import (
 	"context"
-	"fmt"
 	"net"
-	"runtime/debug"
-	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -105,27 +102,8 @@ func NewDialWrap(dialer *net.Dialer, ips []string, network, address, port string
 
 // DialContext is the main entry point for dialing
 func (d *DialWrap) DialContext(ctx context.Context, _ string, _ string) (net.Conn, error) {
-	id := fmt.Sprint(ctx.Value("id"))
-	now := time.Now()
-	var firstConnectionTook time.Duration
-
-	deadline, ok := ctx.Deadline()
-	stackTrace := string(debug.Stack())
-
-	AppendLog(id, fmt.Sprintf(`dialer.DialContext
-	now: %s
-	deadline, ok: %v %v
-	stackTrace: %s`, now, deadline, ok, stackTrace))
-
 	select {
 	case res, ok := <-d.doFirstConnection(ctx):
-		AppendLog(id, fmt.Sprintf(`d.hasCompletedFirstConnection
-		id: %v
-		now: %s`, id, time.Now()))
-
-		n := time.Now()
-		AppendLog(id, fmt.Sprintf(`d.doFirstConnection
-		now: %s`, n))
 		if !ok {
 			// closed channel so depending on the error
 			// either dial new or return the error
@@ -147,60 +125,18 @@ func (d *DialWrap) DialContext(ctx context.Context, _ string, _ string) (net.Con
 		}
 		return nil, res.error
 	case <-d.hasCompletedFirstConnection(ctx):
-		AppendLog(id, fmt.Sprintf(`d.hasCompletedFirstConnection
-		id: %v
-		now: %s`, id, time.Now()))
-
-		firstConnectionTook = time.Since(now)
-		var extContext context.Context
-		extContext = ctx
-		if ctxDeadline, ok := ctx.Deadline(); ok && firstConnectionTook > 0 {
-			exContext := NewExtendibleContext(ctx)
-			exContext.SetDeadline(ctxDeadline.Add(firstConnectionTook))
-			extContext = exContext
-		}
-
 		// if first connection completed and it failed due to other reasons
 		// and not due to context cancellation
 		if d.err != nil && !errkit.Is(d.err, ErrInflightCancel) && !errkit.Is(d.err, context.Canceled) {
 			return nil, d.err
 		}
-		extDealine, ok := extContext.Deadline()
-		AppendLog(id, fmt.Sprintf(`d.dial.start
-		id: %v
-		now: %s
-		ctx.done: %v
-		ctx.Deadline, ok: %v %v`, id, time.Now(), extContext.Err(), extDealine, ok))
-		x, y := d.dial(extContext)
-		AppendLog(id, fmt.Sprintf(`d.dial.end
-		id: %v
-		now: %s
-		ctx.done: %v
-		ctx.Deadline, ok: %v %v`, id, time.Now(), extContext.Err(), extDealine, ok))
-
-		if y != nil {
-			logs := GetLogs(id)
-			panic(id + " " + y.Error() + "\n" + logs)
-		}
-		return x, y
+		return d.dial(ctx)
 	case <-ctx.Done():
-		AppendLog(id, fmt.Sprintf(`d.ctxDone
-		id: %v
-		now: %s`, id, time.Now()))
-
 		return nil, errkit.Append(ErrInflightCancel, ctx.Err())
 	}
 }
 
 func (d *DialWrap) doFirstConnection(ctx context.Context) chan *dialResult {
-	id := fmt.Sprint(ctx.Value("id"))
-	AppendLog(id, fmt.Sprintf(`d.doFirstConnection.start
-		id: %v
-		now: %s`, id, time.Now()))
-	defer AppendLog(id, fmt.Sprintf(`d.doFirstConnection.end
-		id: %v
-		now: %s`, id, time.Now()))
-
 	if d.busyFirstConnection.Load() {
 		return nil
 	}
@@ -231,14 +167,6 @@ func (d *DialWrap) doFirstConnection(ctx context.Context) chan *dialResult {
 }
 
 func (d *DialWrap) hasCompletedFirstConnection(ctx context.Context) chan struct{} {
-	id := fmt.Sprint(ctx.Value("id"))
-	AppendLog(id, fmt.Sprintf(`d.hasCompletedFirstConnection.start
-		id: %v
-		now: %s`, id, time.Now()))
-	defer AppendLog(id, fmt.Sprintf(`d.hasCompletedFirstConnection.end
-		id: %v
-		now: %s`, id, time.Now()))
-
 	ch := make(chan struct{})
 
 	go func() {
@@ -500,26 +428,4 @@ func minNonzeroTime(a, b time.Time) time.Time {
 		return a
 	}
 	return b
-}
-
-var logs = sync.Map{}
-
-func AppendLog(id string, msg string) {
-	if v, ok := logs.Load(id); ok {
-		logs.Store(id, append(v.([]string), msg))
-	} else {
-		logs.Store(id, []string{msg})
-	}
-}
-
-func GetLogs(id string) string {
-	if v, ok := logs.Load(id); ok {
-		var b strings.Builder
-		for _, l := range v.([]string) {
-			b.WriteString(l)
-			b.WriteString("\n")
-		}
-		return b.String()
-	}
-	return ""
 }

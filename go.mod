@@ -12,7 +12,6 @@ require (
 	github.com/projectdiscovery/retryabledns v1.0.87
 	github.com/projectdiscovery/utils v0.3.0
 	github.com/refraction-networking/utls v1.6.7
-	github.com/rs/xid v1.5.0
 	github.com/stretchr/testify v1.9.0
 	github.com/tarunKoyalwar/goleak v0.0.0-20240429141123-0efa90dbdcf9
 	github.com/zmap/zcrypto v0.0.0-20230422215203-9a665e1e9968
