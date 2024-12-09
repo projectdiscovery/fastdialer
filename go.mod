@@ -11,7 +11,7 @@ require (
 	github.com/projectdiscovery/hmap v0.0.70
 	github.com/projectdiscovery/networkpolicy v0.0.9
 	github.com/projectdiscovery/retryabledns v1.0.87
-	github.com/projectdiscovery/utils v0.3.0
+	github.com/projectdiscovery/utils v0.4.1
 	github.com/refraction-networking/utls v1.6.7
 	github.com/stretchr/testify v1.9.0
 	github.com/zmap/zcrypto v0.0.0-20230422215203-9a665e1e9968
