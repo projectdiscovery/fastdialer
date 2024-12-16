@@ -10,14 +10,14 @@ require (
 	github.com/projectdiscovery/goleak v0.0.0-20240729222606-a7d18edc33f8
 	github.com/projectdiscovery/hmap v0.0.70
 	github.com/projectdiscovery/networkpolicy v0.0.9
-	github.com/projectdiscovery/retryabledns v1.0.87
-	github.com/projectdiscovery/utils v0.3.0
+	github.com/projectdiscovery/retryabledns v1.0.88
+	github.com/projectdiscovery/utils v0.4.2
 	github.com/refraction-networking/utls v1.6.7
 	github.com/stretchr/testify v1.9.0
 	github.com/zmap/zcrypto v0.0.0-20230422215203-9a665e1e9968
 	golang.org/x/exp v0.0.0-20221205204356-47842c84f3db
 	golang.org/x/net v0.29.0
-	golang.org/x/sync v0.8.0
+	golang.org/x/sync v0.10.0
 )
 
 require (
@@ -54,10 +54,10 @@ require (
 	github.com/zmap/rc2 v0.0.0-20190804163417-abaa70531248 // indirect
 	go.etcd.io/bbolt v1.3.7 // indirect
 	go.uber.org/multierr v1.11.0 // indirect
-	golang.org/x/crypto v0.27.0 // indirect
+	golang.org/x/crypto v0.31.0 // indirect
 	golang.org/x/mod v0.17.0 // indirect
-	golang.org/x/sys v0.25.0 // indirect
-	golang.org/x/text v0.18.0 // indirect
+	golang.org/x/sys v0.28.0 // indirect
+	golang.org/x/text v0.21.0 // indirect
 	golang.org/x/tools v0.21.1-0.20240508182429-e35e4ccd0d2d // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
