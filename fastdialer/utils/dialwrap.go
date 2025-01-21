@@ -131,8 +131,12 @@ func (d *DialWrap) DialContext(ctx context.Context, _ string, _ string) (net.Con
 	case <-d.hasCompletedFirstConnection(ctx):
 		// if first connection completed and it failed due to other reasons
 		// and not due to context cancellation
-		if d.err != nil && !errkit.Is(d.err, ErrInflightCancel) && !errkit.Is(d.err, context.Canceled) {
-			return nil, d.err
+		d.firstConnCond.L.Lock()
+		err := d.err
+		d.firstConnCond.L.Unlock()
+
+		if err != nil && !errkit.Is(err, ErrInflightCancel) && !errkit.Is(err, context.Canceled) {
+			return nil, err
 		}
 		return d.dial(ctx)
 	case <-ctx.Done():
