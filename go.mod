@@ -8,10 +8,10 @@ require (
 	github.com/docker/go-units v0.5.0
 	github.com/pkg/errors v0.9.1
 	github.com/projectdiscovery/goleak v0.0.0-20240729222606-a7d18edc33f8
-	github.com/projectdiscovery/hmap v0.0.70
+	github.com/projectdiscovery/hmap v0.0.77
 	github.com/projectdiscovery/networkpolicy v0.1.1
-	github.com/projectdiscovery/retryabledns v1.0.87
-	github.com/projectdiscovery/utils v0.3.0
+	github.com/projectdiscovery/retryabledns v1.0.94
+	github.com/projectdiscovery/utils v0.4.9
 	github.com/refraction-networking/utls v1.6.7
 	github.com/stretchr/testify v1.9.0
 	github.com/zmap/zcrypto v0.0.0-20230422215203-9a665e1e9968
