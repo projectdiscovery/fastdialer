@@ -420,7 +420,7 @@ func (d *Dialer) GetDNSData(hostname string) (*retryabledns.DNSData, error) {
 			if d.hmDnsCache != nil {
 				b, errX := data.Marshal()
 				if errX != nil {
-					return nil, err
+					return nil, errX
 				}
 				err := d.hmDnsCache.Set(hostname, b)
 				if err != nil {
