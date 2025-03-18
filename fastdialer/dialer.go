@@ -218,16 +218,24 @@ func (d *Dialer) Dial(ctx context.Context, network, address string) (conn net.Co
 }
 
 // DialTLS with encrypted connection
+//
+// Note that this configuration is included for compatibility with the Go
+// version <1.22, and is not intended to be secure. It is recommended to use the
+// DialTLSWithConfig or DialTLSWithConfigImpersonate methods instead.
 func (d *Dialer) DialTLS(ctx context.Context, network, address string) (conn net.Conn, err error) {
 	if d.options.WithZTLS {
-		return d.DialZTLSWithConfig(ctx, network, address, &ztls.Config{InsecureSkipVerify: true, MinVersion: tls.VersionTLS10})
+		return d.DialZTLSWithConfig(ctx, network, address, DefaultZTLSConfig)
 	}
-	return d.DialTLSWithConfig(ctx, network, address, &tls.Config{Renegotiation: tls.RenegotiateOnceAsClient, InsecureSkipVerify: true, MinVersion: tls.VersionTLS10})
+	return d.DialTLSWithConfig(ctx, network, address, DefaultTLSConfig)
 }
 
 // DialZTLS with encrypted connection using ztls
+//
+// Note that this configuration is included for compatibility with the Go
+// version <1.22, and is not intended to be secure. It is recommended to use the
+// DialZTLSWithConfig method instead.
 func (d *Dialer) DialZTLS(ctx context.Context, network, address string) (conn net.Conn, err error) {
-	return d.DialZTLSWithConfig(ctx, network, address, &ztls.Config{InsecureSkipVerify: true})
+	return d.DialZTLSWithConfig(ctx, network, address, DefaultZTLSConfig)
 }
 
 // DialTLS with encrypted connection
