@@ -5,6 +5,7 @@ import (
 	"context"
 	"crypto/tls"
 	"encoding/json"
+	"fmt"
 	"net"
 	"strings"
 	"sync/atomic"
@@ -14,19 +15,19 @@ import (
 
 	"github.com/Mzack9999/gcache"
 	gounit "github.com/docker/go-units"
-	"github.com/pkg/errors"
-	"github.com/projectdiscovery/fastdialer/fastdialer/ja3/impersonate"
-	"github.com/projectdiscovery/fastdialer/fastdialer/metafiles"
-	"github.com/projectdiscovery/fastdialer/fastdialer/utils"
 	"github.com/projectdiscovery/hmap/store/hybrid"
 	"github.com/projectdiscovery/networkpolicy"
-	retryabledns "github.com/projectdiscovery/retryabledns"
+	"github.com/projectdiscovery/retryabledns"
 	cryptoutil "github.com/projectdiscovery/utils/crypto"
 	"github.com/projectdiscovery/utils/env"
 	"github.com/projectdiscovery/utils/errkit"
 	"github.com/zmap/zcrypto/encoding/asn1"
 	ztls "github.com/zmap/zcrypto/tls"
 	"golang.org/x/net/proxy"
+
+	"github.com/projectdiscovery/fastdialer/fastdialer/ja3/impersonate"
+	"github.com/projectdiscovery/fastdialer/fastdialer/metafiles"
+	"github.com/projectdiscovery/fastdialer/fastdialer/utils"
 )
 
 // option to disable ztls fallback in case of handshake error
@@ -156,7 +157,7 @@ func NewDialer(options Options) (*Dialer, error) {
 	} else {
 		np, err = createNetworkPolicy(options)
 		if err != nil {
-			return nil, errors.Wrap(err, "could not create network policy")
+			return nil, fmt.Errorf("could not create network policy: %w", err)
 		}
 	}
 
