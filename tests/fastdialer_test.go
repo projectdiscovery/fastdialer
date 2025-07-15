@@ -146,7 +146,11 @@ func TestFastDialerDomainMultiIP(t *testing.T) {
 
 		connN, err = fdN.Dial(ctx, "tcp", target+":80")
 		require.Nil(t, err)
-		defer connN.Close()
+		defer func() {
+			if err := connN.Close(); err != nil {
+				t.Errorf("failed to close connection: %s", err)
+			}
+		}()
 
 		require.NotNil(t, connN)
 		require.NotEmpty(t, fdN.GetDialedIP(target))

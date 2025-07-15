@@ -30,7 +30,11 @@ func main() {
 	if err != nil || conn == nil {
 		log.Fatalf("couldn't connect to target: %s", err)
 	}
-	defer conn.Close()
+	defer func() {
+		if err := conn.Close(); err != nil {
+			log.Printf("failed to close connection: %s", err)
+		}
+	}()
 	log.Println("connected to the target")
 
 	// To look up Host/ Get DNS details use

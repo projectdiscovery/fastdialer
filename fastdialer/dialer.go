@@ -303,13 +303,13 @@ func (d *Dialer) Close() {
 		d.mDnsCache.Purge()
 	}
 	if d.hmDnsCache != nil {
-		d.hmDnsCache.Close()
+		_ = d.hmDnsCache.Close()
 	}
 	if d.options.WithDialerHistory && d.dialerHistory != nil {
-		d.dialerHistory.Close()
+		_ = d.dialerHistory.Close()
 	}
 	if d.options.WithTLSData {
-		d.dialerTLSData.Close()
+		_ = d.dialerTLSData.Close()
 	}
 	if d.dialCache != nil {
 		d.dialCache.Purge()

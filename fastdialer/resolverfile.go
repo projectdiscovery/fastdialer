@@ -32,7 +32,9 @@ func loadResolverFile() ([]string, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer file.Close()
+	defer func() {
+		_ = file.Close()
+	}()
 
 	var systemResolvers []string
 
