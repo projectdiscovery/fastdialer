@@ -40,7 +40,9 @@ func testDialer(t *testing.T, options Options) {
 	if err != nil || conn == nil {
 		t.Errorf("couldn't connect to target: %s", err)
 	}
-	conn.Close()
+	if err := conn.Close(); err != nil {
+		t.Errorf("failed to close connection: %s", err)
+	}
 	// retrieve cached data
 	data, err := fd.GetDNSData("www.projectdiscovery.io")
 	if err != nil || data == nil {

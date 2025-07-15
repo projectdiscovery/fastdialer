@@ -76,7 +76,7 @@ func worker(ctx context.Context, fd *fastdialer.Dialer, tasks <-chan string, res
 		elapsed := time.Since(start)
 
 		if err == nil && conn != nil {
-			conn.Close()
+			_ = conn.Close()
 		}
 
 		results <- connResult{
