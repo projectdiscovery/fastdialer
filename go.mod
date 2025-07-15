@@ -8,7 +8,7 @@ require (
 	github.com/docker/go-units v0.5.0
 	github.com/pkg/errors v0.9.1
 	github.com/projectdiscovery/goleak v0.0.0-20240729222606-a7d18edc33f8
-	github.com/projectdiscovery/hmap v0.0.89
+	github.com/projectdiscovery/hmap v0.0.91
 	github.com/projectdiscovery/networkpolicy v0.1.17
 	github.com/projectdiscovery/retryabledns v1.0.101
 	github.com/projectdiscovery/utils v0.4.21
