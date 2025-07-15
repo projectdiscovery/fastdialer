@@ -54,7 +54,7 @@ var (
 		}
 		hmErr = loadHostsFile(hmMem, MaxHostsEntires)
 		if hmErr != nil {
-			hmMem.Close()
+			_ = hmMem.Close()
 			return
 		}
 	})
@@ -79,7 +79,7 @@ var (
 		}
 		hmHybErr = loadHostsFile(hmHybrid, -1)
 		if hmHybErr != nil {
-			hmHybrid.Close()
+			_ = hmHybrid.Close()
 			return
 		}
 		// set finalizer for cleanup

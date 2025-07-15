@@ -119,7 +119,7 @@ func (d *DialWrap) DialContext(ctx context.Context, _ string, _ string) (net.Con
 		if res.Conn != nil {
 			// check expiry
 			if res.expiry.Before(time.Now()) {
-				res.Conn.Close()
+				_ = res.Close()
 				return d.dial(ctx)
 			}
 			return res.Conn, nil
@@ -352,7 +352,7 @@ func (d *DialWrap) dialParallel(ctx context.Context, primaries, fallbacks []net.
 		case results <- dialResult{Conn: c, error: err, primary: primary, done: true}:
 		case <-returned:
 			if c != nil {
-				c.Close()
+				_ = c.Close()
 			}
 		}
 	}
