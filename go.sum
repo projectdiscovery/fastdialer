@@ -95,8 +95,8 @@ github.com/projectdiscovery/networkpolicy v0.1.17 h1:A/axsarHnVgv8bPB2vuI/7Hg0Pr
 github.com/projectdiscovery/networkpolicy v0.1.17/go.mod h1:Bwgfqbb2RAMIQ0OvfVofoFQFV3DitnXZZX5DkQMnjx8=
 github.com/projectdiscovery/retryabledns v1.0.103 h1:rPnoMTK+CXLbO8kT7ODtwbhyQGAUpJsqhVq8AAvu1bs=
 github.com/projectdiscovery/retryabledns v1.0.103/go.mod h1:sfu91YrZkb8Ccvij8YDTV96cQt69IPqnfa+OEFUke1o=
-github.com/projectdiscovery/utils v0.4.21 h1:yAothTUSF6NwZ9yoC4iGe5gSBrovqKR9JwwW3msxk3Q=
-github.com/projectdiscovery/utils v0.4.21/go.mod h1:HJuJFqjB6EmVaDl0ilFPKvLoMaX2GyE6Il2TqKXNs8I=
+github.com/projectdiscovery/utils v0.4.22 h1:OO3FU2uX967sQxu5JtpdBZNzOevvKHAhWqkoTGl+C0A=
+github.com/projectdiscovery/utils v0.4.22/go.mod h1:3l84gpCwL9KG1/ZmslOBABCrk84CcpGWJZfR8wZysR4=
 github.com/refraction-networking/utls v1.7.1 h1:dxg+jla3uocgN8HtX+ccwDr68uCBBO3qLrkZUbqkcw0=
 github.com/refraction-networking/utls v1.7.1/go.mod h1:TUhh27RHMGtQvjQq+RyO11P6ZNQNBb3N0v7wsEjKAIQ=
 github.com/saintfish/chardet v0.0.0-20230101081208-5e3ef4b5456d h1:hrujxIzL1woJ7AwssoOcM/tq5JjjG2yYOc8odClEiXA=
