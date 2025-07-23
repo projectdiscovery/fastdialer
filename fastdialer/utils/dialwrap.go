@@ -333,6 +333,17 @@ func (d *DialWrap) fallbackDelay() time.Duration {
 // closes the others. Otherwise it returns an error from the first
 // primary address.
 func (d *DialWrap) dialParallel(ctx context.Context, primaries, fallbacks []net.IP, network string, port string) (net.Conn, error) {
+	// Check for nil receiver
+	if d == nil {
+		return nil, fmt.Errorf("dialParallel: receiver is nil")
+	}
+
+	// Check for nil internal dialer if applicable
+	if d.dialer == nil {
+		return nil, fmt.Errorf("dialParallel: internal dialer is nil")
+	}
+
+	// If no fallbacks, use serial dialing only
 	if len(fallbacks) == 0 {
 		return d.dialSerial(ctx, primaries, network, port)
 	}
@@ -343,11 +354,13 @@ func (d *DialWrap) dialParallel(ctx context.Context, primaries, fallbacks []net.
 	results := make(chan dialResult) // unbuffered
 
 	startRacer := func(ctx context.Context, primary bool) {
-		ras := primaries
-		if !primary {
-			ras = fallbacks
+		var targets []net.IP
+		if primary {
+			targets = primaries
+		} else {
+			targets = fallbacks
 		}
-		c, err := d.dialSerial(ctx, ras, network, port)
+		c, err := d.dialSerial(ctx, targets, network, port)
 		select {
 		case results <- dialResult{Conn: c, error: err, primary: primary, done: true}:
 		case <-returned:
