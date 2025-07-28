@@ -7,7 +7,7 @@ require (
 	github.com/dimchansky/utfbom v1.1.1
 	github.com/docker/go-units v0.5.0
 	github.com/projectdiscovery/goleak v0.0.0-20240729222606-a7d18edc33f8
-	github.com/projectdiscovery/hmap v0.0.91
+	github.com/projectdiscovery/hmap v0.0.92
 	github.com/projectdiscovery/networkpolicy v0.1.18
 	github.com/projectdiscovery/retryabledns v1.0.105
 	github.com/projectdiscovery/utils v0.4.22
