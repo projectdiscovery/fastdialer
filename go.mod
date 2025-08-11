@@ -8,7 +8,7 @@ require (
 	github.com/docker/go-units v0.5.0
 	github.com/projectdiscovery/goleak v0.0.0-20240729222606-a7d18edc33f8
 	github.com/projectdiscovery/hmap v0.0.92
-	github.com/projectdiscovery/networkpolicy v0.1.19
+	github.com/projectdiscovery/networkpolicy v0.1.20
 	github.com/projectdiscovery/retryabledns v1.0.105
 	github.com/projectdiscovery/utils v0.4.22
 	github.com/refraction-networking/utls v1.7.1
@@ -27,7 +27,7 @@ require (
 	github.com/cloudflare/circl v1.6.1 // indirect
 	github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc // indirect
 	github.com/fsnotify/fsnotify v1.6.0 // indirect
-	github.com/gaissmai/bart v0.23.0 // indirect
+	github.com/gaissmai/bart v0.23.1 // indirect
 	github.com/golang/snappy v0.0.4 // indirect
 	github.com/gorilla/css v1.0.1 // indirect
 	github.com/klauspost/compress v1.17.11 // indirect
