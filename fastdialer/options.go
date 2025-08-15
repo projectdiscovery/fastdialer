@@ -76,7 +76,7 @@ var DefaultOptions = Options{
 	MaxRetries:                      5,
 	HostsFile:                       true,
 	ResolversFile:                   true,
-	CacheType:                       Disk,
+	CacheType:                       Memory,
 	DialerTimeout:                   10 * time.Second,
 	DialerKeepAlive:                 10 * time.Second,
 	MaxTemporaryErrors:              30,
