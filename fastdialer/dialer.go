@@ -100,14 +100,15 @@ func NewDialer(options Options) (*Dialer, error) {
 		hmDnsCache *hybrid.HybridMap
 		dnsCache   gcache.Cache[string, *retryabledns.DNSData]
 	)
-	options.CacheType = Memory
-	if options.CacheType == Memory {
-		dnsCache = gcache.New[string, *retryabledns.DNSData](MaxDNSItems).Build()
-	} else {
+
+	switch options.CacheType {
+	case Hybrid, Disk:
 		hmDnsCache, err = hybrid.New(hybrid.DefaultHybridOptions)
 		if err != nil {
 			return nil, err
 		}
+	default: // Memory
+		dnsCache = gcache.New[string, *retryabledns.DNSData](MaxDNSItems).Build()
 	}
 
 	var dialerTLSData *hybrid.HybridMap
