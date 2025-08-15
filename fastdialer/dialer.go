@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"crypto/tls"
+	"encoding/gob"
 	"encoding/json"
 	"fmt"
 	"net"
@@ -15,6 +16,7 @@ import (
 
 	"github.com/Mzack9999/gcache"
 	gounit "github.com/docker/go-units"
+	"github.com/miekg/dns"
 	"github.com/projectdiscovery/hmap/store/hybrid"
 	"github.com/projectdiscovery/networkpolicy"
 	"github.com/projectdiscovery/retryabledns"
@@ -50,6 +52,25 @@ func init() {
 	}
 	MaxDNSCacheSize = maxDnsCacheSize
 	MaxDNSItems = env.GetEnvOrDefault("MAX_DNS_ITEMS", 1024)
+
+	// Register DNS types with gob encoder
+	gob.Register(&dns.SOA{})
+	gob.Register(&dns.A{})
+	gob.Register(&dns.AAAA{})
+	gob.Register(&dns.CNAME{})
+	gob.Register(&dns.MX{})
+	gob.Register(&dns.NS{})
+	gob.Register(&dns.PTR{})
+	gob.Register(&dns.SRV{})
+	gob.Register(&dns.TXT{})
+	gob.Register(&dns.CAA{})
+	gob.Register(&dns.DNSKEY{})
+	gob.Register(&dns.DS{})
+	gob.Register(&dns.NSEC{})
+	gob.Register(&dns.NSEC3{})
+	gob.Register(&dns.RRSIG{})
+	gob.Register(&dns.TLSA{})
+	gob.Register(&dns.OPT{})
 }
 
 // Dialer structure containing data information
@@ -100,14 +121,15 @@ func NewDialer(options Options) (*Dialer, error) {
 		hmDnsCache *hybrid.HybridMap
 		dnsCache   gcache.Cache[string, *retryabledns.DNSData]
 	)
-	options.CacheType = Memory
-	if options.CacheType == Memory {
-		dnsCache = gcache.New[string, *retryabledns.DNSData](MaxDNSItems).Build()
-	} else {
+
+	switch options.CacheType {
+	case Hybrid, Disk:
 		hmDnsCache, err = hybrid.New(hybrid.DefaultHybridOptions)
 		if err != nil {
 			return nil, err
 		}
+	default: // Memory
+		dnsCache = gcache.New[string, *retryabledns.DNSData](MaxDNSItems).Build()
 	}
 
 	var dialerTLSData *hybrid.HybridMap

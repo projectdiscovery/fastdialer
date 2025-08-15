@@ -20,7 +20,7 @@ func TestDialer(t *testing.T) {
 	testDialer(t, options)
 
 	// disk
-	options.CacheType = Hybrid
+	options.CacheType = Disk
 	options.CacheMemoryMaxItems = 100
 	testDialer(t, options)
 
@@ -32,25 +32,28 @@ func testDialer(t *testing.T, options Options) {
 	fd, err := NewDialer(options)
 	if err != nil {
 		t.Errorf("couldn't create fastdialer instance: %s", err)
+		return
 	}
+	defer fd.Close()
 
 	// valid resolution + cache
 	ctx := context.Background()
 	conn, err := fd.Dial(ctx, "tcp", "www.projectdiscovery.io:80")
 	if err != nil || conn == nil {
 		t.Errorf("couldn't connect to target: %s", err)
+		return
 	}
 	if err := conn.Close(); err != nil {
 		t.Errorf("failed to close connection: %s", err)
+		return
 	}
 	// retrieve cached data
 	data, err := fd.GetDNSData("www.projectdiscovery.io")
 	if err != nil || data == nil {
 		t.Errorf("couldn't retrieve dns data: %s", err)
+		return
 	}
 	if len(data.A) == 0 {
 		t.Error("no A results found")
 	}
-	// cleanup
-	fd.Close()
 }

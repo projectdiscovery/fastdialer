@@ -114,7 +114,6 @@ func (d *Dialer) dial(ctx context.Context, opts *dialOptions) (conn net.Conn, er
 			cacheData, err, _ := d.resolutionsGroup.Do(hostname, func() (interface{}, error) {
 				return d.GetDNSData(hostname)
 			})
-
 			if cacheData == nil {
 				return nil, ResolveHostError
 			}
