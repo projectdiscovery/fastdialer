@@ -9,7 +9,7 @@ require (
 	github.com/miekg/dns v1.1.62
 	github.com/projectdiscovery/goleak v0.0.0-20240729222606-a7d18edc33f8
 	github.com/projectdiscovery/hmap v0.0.93
-	github.com/projectdiscovery/networkpolicy v0.1.21
+	github.com/projectdiscovery/networkpolicy v0.1.22
 	github.com/projectdiscovery/retryabledns v1.0.106
 	github.com/projectdiscovery/utils v0.4.23
 	github.com/refraction-networking/utls v1.7.1
