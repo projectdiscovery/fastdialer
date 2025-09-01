@@ -9,11 +9,11 @@ require (
 	github.com/miekg/dns v1.1.62
 	github.com/projectdiscovery/goleak v0.0.0-20240729222606-a7d18edc33f8
 	github.com/projectdiscovery/hmap v0.0.93
-	github.com/projectdiscovery/networkpolicy v0.1.22
+	github.com/projectdiscovery/networkpolicy v0.1.23
 	github.com/projectdiscovery/retryabledns v1.0.106
 	github.com/projectdiscovery/utils v0.4.23
 	github.com/refraction-networking/utls v1.7.1
-	github.com/stretchr/testify v1.10.0
+	github.com/stretchr/testify v1.11.0
 	github.com/zmap/zcrypto v0.0.0-20230422215203-9a665e1e9968
 	golang.org/x/exp v0.0.0-20250106191152-7588d65b2ba8
 	golang.org/x/net v0.39.0
