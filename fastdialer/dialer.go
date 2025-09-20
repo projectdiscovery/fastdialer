@@ -228,6 +228,9 @@ func createNetworkPolicy(options Options) (*networkpolicy.NetworkPolicy, error) 
 
 // Dial function compatible with net/http
 func (d *Dialer) Dial(ctx context.Context, network, address string) (conn net.Conn, err error) {
+	if d == nil || d.options == nil {
+		return nil, fmt.Errorf("fastdialer: Dial() called on nil Dialer")
+	}
 	return d.dial(ctx, &dialOptions{
 		network:             network,
 		address:             address,
@@ -246,6 +249,9 @@ func (d *Dialer) Dial(ctx context.Context, network, address string) (conn net.Co
 // version <1.22, and is not intended to be secure. It is recommended to use the
 // DialTLSWithConfig or DialTLSWithConfigImpersonate methods instead.
 func (d *Dialer) DialTLS(ctx context.Context, network, address string) (conn net.Conn, err error) {
+	if d == nil || d.options == nil {
+		return nil, fmt.Errorf("fastdialer: DialTLS() called on nil Dialer")
+	}
 	if d.options.WithZTLS {
 		return d.DialZTLSWithConfig(ctx, network, address, DefaultZTLSConfig)
 	}
@@ -258,11 +264,17 @@ func (d *Dialer) DialTLS(ctx context.Context, network, address string) (conn net
 // version <1.22, and is not intended to be secure. It is recommended to use the
 // DialZTLSWithConfig method instead.
 func (d *Dialer) DialZTLS(ctx context.Context, network, address string) (conn net.Conn, err error) {
+	if d == nil || d.options == nil {
+		return nil, fmt.Errorf("fastdialer: DialZTLS() called on nil Dialer")
+	}
 	return d.DialZTLSWithConfig(ctx, network, address, DefaultZTLSConfig)
 }
 
 // DialTLS with encrypted connection
 func (d *Dialer) DialTLSWithConfig(ctx context.Context, network, address string, config *tls.Config) (conn net.Conn, err error) {
+	if d == nil || d.options == nil {
+		return nil, fmt.Errorf("fastdialer: DialTLSWithConfig() called on nil Dialer")
+	}
 	return d.dial(ctx, &dialOptions{
 		network:             network,
 		address:             address,
@@ -277,6 +289,9 @@ func (d *Dialer) DialTLSWithConfig(ctx context.Context, network, address string,
 
 // DialTLSWithConfigImpersonate dials tls with impersonation
 func (d *Dialer) DialTLSWithConfigImpersonate(ctx context.Context, network, address string, config *tls.Config, impersonate impersonate.Strategy, identity *impersonate.Identity) (conn net.Conn, err error) {
+	if d == nil || d.options == nil {
+		return nil, fmt.Errorf("fastdialer: DialTLSWithConfigImpersonate() called on nil Dialer")
+	}
 	return d.dial(ctx, &dialOptions{
 		network:             network,
 		address:             address,
@@ -291,6 +306,9 @@ func (d *Dialer) DialTLSWithConfigImpersonate(ctx context.Context, network, addr
 
 // DialZTLSWithConfig dials ztls with config
 func (d *Dialer) DialZTLSWithConfig(ctx context.Context, network, address string, config *ztls.Config) (conn net.Conn, err error) {
+	if d == nil || d.options == nil {
+		return nil, fmt.Errorf("fastdialer: DialZTLSWithConfig() called on nil Dialer")
+	}
 	// ztls doesn't support tls13
 	if IsTLS13(config) {
 		stdTLSConfig, err := AsTLSConfig(config)
@@ -322,6 +340,9 @@ func (d *Dialer) DialZTLSWithConfig(ctx context.Context, network, address string
 
 // Close instance and cleanups
 func (d *Dialer) Close() {
+	if d == nil || d.options == nil {
+		return
+	}
 	if d.mDnsCache != nil {
 		d.mDnsCache.Purge()
 	}
@@ -345,6 +366,9 @@ func (d *Dialer) Close() {
 
 // GetDialedIP returns the ip dialed by the HTTP client
 func (d *Dialer) GetDialedIP(hostname string) string {
+	if d == nil || d.options == nil {
+		return ""
+	}
 	if !d.options.WithDialerHistory || d.dialerHistory == nil {
 		return ""
 	}
@@ -359,6 +383,9 @@ func (d *Dialer) GetDialedIP(hostname string) string {
 
 // GetTLSData returns the tls data for a hostname
 func (d *Dialer) GetTLSData(hostname string) (*cryptoutil.TLSData, error) {
+	if d == nil || d.options == nil {
+		return nil, fmt.Errorf("fastdialer: GetTLSData() called on nil Dialer")
+	}
 	hostname = asAscii(hostname)
 	if !d.options.WithTLSData {
 		return nil, NoTLSHistoryError
@@ -379,6 +406,9 @@ func (d *Dialer) GetTLSData(hostname string) (*cryptoutil.TLSData, error) {
 
 // GetDNSDataFromCache cached by the resolver
 func (d *Dialer) GetDNSDataFromCache(hostname string) (*retryabledns.DNSData, error) {
+	if d == nil || d.options == nil {
+		return nil, fmt.Errorf("fastdialer: GetDNSDataFromCache() called on nil Dialer")
+	}
 	hostname = asAscii(hostname)
 	var data retryabledns.DNSData
 	var dataBytes []byte
@@ -402,6 +432,9 @@ func (d *Dialer) GetDNSDataFromCache(hostname string) (*retryabledns.DNSData, er
 
 // GetDNSData for the given hostname
 func (d *Dialer) GetDNSData(hostname string) (*retryabledns.DNSData, error) {
+	if d == nil || d.options == nil {
+		return nil, fmt.Errorf("fastdialer: GetDNSData() called on nil Dialer")
+	}
 	hostname = asAscii(hostname)
 	// support http://[::1] http://[::1]:8080
 	// https://datatracker.ietf.org/doc/html/rfc2732
