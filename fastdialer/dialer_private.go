@@ -363,7 +363,6 @@ func (d *Dialer) dialIPS(ctx context.Context, l4 l4dialer, opts *dialOptions) (c
 		}
 		ztlsConn := ztls.Client(l4Conn, ztlsconfigCopy)
 
-		ztlsConn.SetDeadline(time.Now().Add(d.options.DialerTimeout))
 		_, err = ctxutil.ExecFuncWithTwoReturns(ctx, func() (bool, error) {
 			handshakeDoneCancel := closeAfterTimeout(d.GetTimeout(), conn)
 			defer handshakeDoneCancel()
