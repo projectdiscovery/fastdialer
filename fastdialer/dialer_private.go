@@ -416,6 +416,7 @@ func (d *Dialer) handleDialError(err error, opts *dialOptions) error {
 func closeAfterTimeout(d time.Duration, c ...io.Closer) context.CancelFunc {
 	handshakeDoneCtx, handshakeDoneCancel := context.WithCancel(context.Background())
 	t := time.NewTimer(d)
+	defer t.Stop() // Safe after Go 1.23
 	go func() {
 		select {
 		case <-t.C:
@@ -423,8 +424,7 @@ func closeAfterTimeout(d time.Duration, c ...io.Closer) context.CancelFunc {
 				cl.Close()
 			}
 		case <-handshakeDoneCtx.Done():
-			// Safe after Go 1.23
-			t.Stop()
+			// Nothing to do, t.Stop() is deferred
 		}
 	}()
 	return handshakeDoneCancel
