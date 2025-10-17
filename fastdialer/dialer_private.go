@@ -6,6 +6,7 @@ import (
 	"crypto/tls"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log/slog"
 	"net"
 	"os"
@@ -64,7 +65,7 @@ func (d *dialOptions) logAddress() string {
 
 func (d *Dialer) dial(ctx context.Context, opts *dialOptions) (conn net.Conn, err error) {
 	// add global timeout to context
-	ctx, cancel := context.WithTimeoutCause(ctx, d.options.DialerTimeout, ErrDialTimeout)
+	ctx, cancel := context.WithTimeoutCause(ctx, d.GetTimeout(), ErrDialTimeout)
 	defer cancel()
 
 	var hostname, port, fixedIP string
@@ -240,9 +241,11 @@ func (d *Dialer) dialIPS(ctx context.Context, l4 l4dialer, opts *dialOptions) (c
 				return nil, d.handleDialError(err, opts)
 			}
 			TlsConn := tls.Client(l4Conn, tlsconfigCopy)
+			handshakeDoneCancel := closeAfterTimeout(d.GetTimeout(), TlsConn)
 			if err := TlsConn.HandshakeContext(ctx); err != nil {
 				return nil, errkit.Wrap(err, "could not tls handshake")
 			}
+			handshakeDoneCancel()
 			conn = TlsConn
 		} else {
 			nativeConn, err := l4.DialContext(ctx, opts.network, hostPort)
@@ -270,9 +273,11 @@ func (d *Dialer) dialIPS(ctx context.Context, l4 l4dialer, opts *dialOptions) (c
 			case impersonate.Chrome:
 				uTLSConn = utls.UClient(nativeConn, uTLSConfig, utls.HelloChrome_106_Shuffle)
 			}
+			handshakeDoneCancel := closeAfterTimeout(d.GetTimeout(), uTLSConn)
 			if err := uTLSConn.Handshake(); err != nil {
 				return nil, err
 			}
+			handshakeDoneCancel()
 			conn = uTLSConn
 		}
 	} else if opts.shouldUseZTLS {
@@ -292,6 +297,9 @@ func (d *Dialer) dialIPS(ctx context.Context, l4 l4dialer, opts *dialOptions) (c
 		}
 		ztlsConn := ztls.Client(l4Conn, ztlsconfigCopy)
 		_, err = ctxutil.ExecFuncWithTwoReturns(ctx, func() (bool, error) {
+			handshakeDoneCancel := closeAfterTimeout(d.GetTimeout(), conn)
+			defer handshakeDoneCancel()
+
 			// run this in goroutine as select since this does not support context
 			return true, ztlsConn.Handshake()
 		})
@@ -314,7 +322,7 @@ func (d *Dialer) dialIPS(ctx context.Context, l4 l4dialer, opts *dialOptions) (c
 				}
 				connectionCh <- conn
 			}()
-			// using timer as time.After is not recovered gy GC
+			// using timer as time.After is not recovered by GC
 			dialerTime := time.NewTimer(d.options.DialerTimeout)
 			defer dialerTime.Stop()
 			select {
@@ -354,7 +362,12 @@ func (d *Dialer) dialIPS(ctx context.Context, l4 l4dialer, opts *dialOptions) (c
 			return nil, d.handleDialError(err, opts)
 		}
 		ztlsConn := ztls.Client(l4Conn, ztlsconfigCopy)
+
+		ztlsConn.SetDeadline(time.Now().Add(d.options.DialerTimeout))
 		_, err = ctxutil.ExecFuncWithTwoReturns(ctx, func() (bool, error) {
+			handshakeDoneCancel := closeAfterTimeout(d.GetTimeout(), conn)
+			defer handshakeDoneCancel()
+
 			// run this in goroutine as select since this does not support context
 			return true, ztlsConn.Handshake()
 		})
@@ -398,4 +411,22 @@ func (d *Dialer) handleDialError(err error, opts *dialOptions) error {
 		}
 	}
 	return errx
+}
+
+// closeAfterTimeout closes the sockets after the given duration unless the returned cancel function is called
+func closeAfterTimeout(d time.Duration, c ...io.Closer) context.CancelFunc {
+	handshakeDoneCtx, handshakeDoneCancel := context.WithCancel(context.Background())
+	t := time.NewTimer(d)
+	go func() {
+		select {
+		case <-t.C:
+			for _, cl := range c {
+				cl.Close()
+			}
+		case <-handshakeDoneCtx.Done():
+			// Safe after Go 1.23
+			t.Stop()
+		}
+	}()
+	return handshakeDoneCancel
 }
