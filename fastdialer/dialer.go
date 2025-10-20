@@ -498,6 +498,21 @@ func (d *Dialer) GetDNSData(hostname string) (*retryabledns.DNSData, error) {
 	return data, nil
 }
 
+var MaxDialerTimeout = time.Minute
+var MinDialerTimeout = time.Second
+
+// GetTimeout returns the maximum timeout allowed for dialer
+func (d *Dialer) GetTimeout() time.Duration {
+	to := d.options.DialerTimeout
+	if to <= 0 || to > MaxDialerTimeout {
+		to = MaxDialerTimeout
+	}
+	if to < MinDialerTimeout {
+		to = MinDialerTimeout
+	}
+	return to
+}
+
 func getHMAPDBType(options Options) hybrid.DBType {
 	switch options.DiskDbType {
 	case Pogreb:
