@@ -414,18 +414,24 @@ func (d *Dialer) handleDialError(err error, opts *dialOptions) error {
 
 // closeAfterTimeout closes the sockets after the given duration unless the returned cancel function is called
 func closeAfterTimeout(d time.Duration, c ...io.Closer) context.CancelFunc {
+	ctx, cancel := context.WithTimeout(context.Background(), d)
 	handshakeDoneCtx, handshakeDoneCancel := context.WithCancel(context.Background())
-	t := time.NewTimer(d)
-	defer t.Stop() // Safe after Go 1.23
 	go func() {
 		select {
-		case <-t.C:
+		case <-ctx.Done():
 			for _, cl := range c {
-				cl.Close()
+				_ = cl.Close()
 			}
+			return
 		case <-handshakeDoneCtx.Done():
-			// Nothing to do, t.Stop() is deferred
+			return
 		}
 	}()
-	return handshakeDoneCancel
+
+	ctxDone := func() {
+		handshakeDoneCancel()
+		cancel()
+	}
+
+	return ctxDone
 }
