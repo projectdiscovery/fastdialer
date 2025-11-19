@@ -297,7 +297,7 @@ func (d *Dialer) dialIPS(ctx context.Context, l4 l4dialer, opts *dialOptions) (c
 		}
 		ztlsConn := ztls.Client(l4Conn, ztlsconfigCopy)
 		_, err = ctxutil.ExecFuncWithTwoReturns(ctx, func() (bool, error) {
-			handshakeDoneCancel := closeAfterTimeout(d.GetTimeout(), conn)
+			handshakeDoneCancel := closeAfterTimeout(d.GetTimeout(), ztlsConn)
 			defer handshakeDoneCancel()
 
 			// run this in goroutine as select since this does not support context
@@ -364,7 +364,7 @@ func (d *Dialer) dialIPS(ctx context.Context, l4 l4dialer, opts *dialOptions) (c
 		ztlsConn := ztls.Client(l4Conn, ztlsconfigCopy)
 
 		_, err = ctxutil.ExecFuncWithTwoReturns(ctx, func() (bool, error) {
-			handshakeDoneCancel := closeAfterTimeout(d.GetTimeout(), conn)
+			handshakeDoneCancel := closeAfterTimeout(d.GetTimeout(), ztlsConn)
 			defer handshakeDoneCancel()
 
 			// run this in goroutine as select since this does not support context
