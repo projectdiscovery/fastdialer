@@ -93,8 +93,8 @@ github.com/projectdiscovery/hmap v0.0.97 h1:rfJt44HOaK5/zkeQXXoDl5tCuiUpc0chuYN4
 github.com/projectdiscovery/hmap v0.0.97/go.mod h1:x7K+2xTDMYLilpZjnnaXufesVVUSfxttXgqsuYvQJVk=
 github.com/projectdiscovery/networkpolicy v0.1.30 h1:XvzvRxldndEk7eRwSvuJ4xtGSzSgwZsrZB9VuUEfR1A=
 github.com/projectdiscovery/networkpolicy v0.1.30/go.mod h1:/aJZmi2/d41O67wBcTkee/LWhyJnlKxCuWe6cUN2SNU=
-github.com/projectdiscovery/retryabledns v1.0.110 h1:24p1PzWBdfsRnGsBf6ZxXPzvK0sYaL4q/ju4+2OhJzU=
-github.com/projectdiscovery/retryabledns v1.0.110/go.mod h1:GFj5HjxfaGrZeoYf79zI/R99XljBNjmOqNvwOqPepRU=
+github.com/projectdiscovery/retryabledns v1.0.111 h1:iyMdCDgNmaSRJYcGqB+SLlvlw9WijlbJ6Q9OEpRAWsQ=
+github.com/projectdiscovery/retryabledns v1.0.111/go.mod h1:6TOPJ3QAE4reBu6bvsGsTcyEb+OypcKYFQH7yVsjyIM=
 github.com/projectdiscovery/utils v0.7.3 h1:kX+77AA58yK6EZgkTRJEnK9V/7AZYzlXdcu/o/kJhFs=
 github.com/projectdiscovery/utils v0.7.3/go.mod h1:uDdQ3/VWomai98l+a3Ye/srDXdJ4xUIar/mSXlQ9gBM=
 github.com/refraction-networking/utls v1.7.1 h1:dxg+jla3uocgN8HtX+ccwDr68uCBBO3qLrkZUbqkcw0=
