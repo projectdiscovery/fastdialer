@@ -68,6 +68,12 @@ type Options struct {
 	// optional max temporary errors to mark as permanent
 	MaxTemporaryErrors              int
 	MaxTemporaryToPermanentDuration time.Duration
+
+	// ConnectionCacheExpiry is the duration after which a cached connection
+	// expires.
+	//
+	// Default is [DefaultConnExpiry].
+	ConnectionCacheExpiry time.Duration
 }
 
 // DefaultOptions of the cache

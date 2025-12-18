@@ -166,6 +166,7 @@ func (d *Dialer) dial(ctx context.Context, opts *dialOptions) (conn net.Conn, er
 		if err != nil {
 			return nil, errkit.Wrap(err, "could not create dialwrap")
 		}
+		dw.SetExpireConnAfter(d.options.ConnectionCacheExpiry)
 		if err = d.dialCache.Set(opts.connHash(), dw); err != nil {
 			return nil, errkit.Wrap(err, "could not set dialwrap")
 		}
