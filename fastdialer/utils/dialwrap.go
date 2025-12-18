@@ -37,8 +37,22 @@ var (
 	// errGotConnection has already been established
 	ErrInflightCancel       = errkit.New("context cancelled before establishing connection")
 	ErrNoIPs                = errkit.New("no ips provided in dialWrap")
-	ExpireConnAfter         = time.Duration(5) * time.Second
 	ErrPortClosedOrFiltered = errkit.New("port closed or filtered").SetKind(errkit.ErrKindNetworkPermanent)
+
+	// ExpireConnAfter is the default duration after which a cached connection
+	// expires.
+	//
+	// Deprecated: use [DefaultConnExpiry] instead.
+	ExpireConnAfter = time.Duration(5) * time.Second
+)
+
+const (
+	// DefaultConnExpiry is the default duration after which a cached
+	// connection expires.
+	//
+	// This is used when Options.ConnectionCacheExpiry is not set.
+	// Use the SetExpireConnAfter method to adjust.
+	DefaultConnExpiry = time.Duration(10) * time.Second
 )
 
 // dialResult represents the result of a dial operation
@@ -61,6 +75,9 @@ type DialWrap struct {
 	network string
 	address string
 	port    string
+
+	// expireConnAfter is the duration after which a cached connection expires.
+	expireConnAfter time.Duration
 
 	// all connections blocks until a first connection is established
 	// subsequent calls will behave upon first result
@@ -95,6 +112,7 @@ func NewDialWrap(dialer *net.Dialer, ips []string, network, address, port string
 		ipv4:                     ipv4,
 		ipv6:                     ipv6,
 		ips:                      valid,
+		expireConnAfter:          DefaultConnExpiry,
 		completedFirstConnection: &atomic.Bool{},
 		busyFirstConnection:      &atomic.Bool{},
 		network:                  network,
@@ -229,7 +247,7 @@ func (d *DialWrap) dialAllParallel(ctx context.Context) ([]*dialResult, error) {
 				rec <- &dialResult{error: errkit.Append(ErrInflightCancel, dialCtx.Err())}
 			default:
 				c, err := d.dialer.DialContext(dialCtx, d.network, net.JoinHostPort(ipx.String(), d.port))
-				rec <- &dialResult{Conn: c, error: err, expiry: time.Now().Add(ExpireConnAfter)}
+				rec <- &dialResult{Conn: c, error: err, expiry: time.Now().Add(d.expireConnAfter)}
 			}
 		}(ip)
 	}
@@ -467,4 +485,14 @@ func (d *DialWrap) SetFirstConnectionDuration(dur time.Duration) {
 	defer d.mu.Unlock()
 
 	d.firstConnectionDuration = dur
+}
+
+// SetExpireConnAfter sets the duration after which a cached connection expires.
+// If dur is 0, [DefaultConnExpiry] is used.
+func (d *DialWrap) SetExpireConnAfter(dur time.Duration) {
+	if dur == 0 {
+		dur = DefaultConnExpiry
+	}
+
+	d.expireConnAfter = dur
 }
