@@ -89,8 +89,8 @@ github.com/projectdiscovery/blackrock v0.0.1 h1:lHQqhaaEFjgf5WkuItbpeCZv2DUIE45k
 github.com/projectdiscovery/blackrock v0.0.1/go.mod h1:ANUtjDfaVrqB453bzToU+YB4cUbvBRpLvEwoWIwlTss=
 github.com/projectdiscovery/goleak v0.0.0-20240729222606-a7d18edc33f8 h1:M86+KhVmrurDS2ry8kwI0Z8LosZUwKW1K08vEDHlJ4M=
 github.com/projectdiscovery/goleak v0.0.0-20240729222606-a7d18edc33f8/go.mod h1:ZkbDKjIe4ojX5CyEk8dYe8odTs8bnPB5s0nzIm4bnMY=
-github.com/projectdiscovery/hmap v0.0.98 h1:XxYIi7yJCNiDAKCJXvuY9IBM5O6OgDgx4XHgKxkR4eg=
-github.com/projectdiscovery/hmap v0.0.98/go.mod h1:bgN5fuZPJMj2YnAGEEnCypoifCnALJixHEVQszktQIU=
+github.com/projectdiscovery/hmap v0.0.99 h1:XPfLnD3CUrMqVCIdpK9ozD7Xmp3simx3T+2j4WWhHnU=
+github.com/projectdiscovery/hmap v0.0.99/go.mod h1:koyUJi83K5G3w35ZLFXOYZIyYJsO+6hQrgDDN1RBrVE=
 github.com/projectdiscovery/networkpolicy v0.1.33 h1:bVgp+XpLEsQ7ZEJt3UaUqIwhI01MMdt7F2dfIKFQg/w=
 github.com/projectdiscovery/networkpolicy v0.1.33/go.mod h1:YAPddAXUc/lhoU85AFdvgOQKx8Qh8r0vzSjexRWk6Yk=
 github.com/projectdiscovery/retryabledns v1.0.112 h1:4iCiuo6jMnw/pdOZRzBQrbUOUu5tOeuvGupxVV8RDLw=
