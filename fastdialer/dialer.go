@@ -87,6 +87,8 @@ type Dialer struct {
 	dialer            *net.Dialer
 	proxyDialer       *proxy.Dialer
 	networkpolicy     *networkpolicy.NetworkPolicy
+	searchDomains     []string
+	ndots             int
 	dialCache         gcache.Cache[string, *utils.DialWrap]
 	dialTimeoutErrors gcache.Cache[string, *atomic.Uint32]
 
@@ -96,11 +98,27 @@ type Dialer struct {
 // NewDialer instance
 func NewDialer(options Options) (*Dialer, error) {
 	var resolvers []string
+	var searchDomains []string
+	var ndots = options.Ndots
+	if ndots <= 0 {
+		ndots = DefaultNdots
+	}
+
 	// Add system resolvers as the first to be tried
 	if options.ResolversFile {
-		systemResolvers, err := loadResolverFile()
-		if err == nil && len(systemResolvers) > 0 {
-			resolvers = systemResolvers
+		systemConfig, err := loadResolverFile(options)
+		if err == nil && systemConfig != nil {
+			if len(systemConfig.Resolvers) > 0 {
+				resolvers = systemConfig.Resolvers
+			}
+
+			if len(systemConfig.SearchDomains) > 0 {
+				searchDomains = systemConfig.SearchDomains
+			}
+
+			if systemConfig.Ndots > 0 {
+				ndots = systemConfig.Ndots
+			}
 		}
 	}
 
@@ -194,6 +212,8 @@ func NewDialer(options Options) (*Dialer, error) {
 		proxyDialer:      options.ProxyDialer,
 		options:          &options,
 		networkpolicy:    np,
+		searchDomains:    searchDomains,
+		ndots:            ndots,
 		dialCache:        gcache.New[string, *utils.DialWrap](MaxDialCacheSize).Build(),
 		resolutionsGroup: &singleflight.Group{},
 	}
@@ -424,45 +444,118 @@ func (d *Dialer) GetDNSData(hostname string) (*retryabledns.DNSData, error) {
 			return &retryabledns.DNSData{AAAA: []string{hostname}}, nil
 		}
 	}
+
 	var (
 		data *retryabledns.DNSData
 		err  error
 	)
+
 	data, err = d.GetDNSDataFromCache(hostname)
-	if err != nil {
-		data, err = d.dnsclient.Resolve(hostname)
-		if err != nil && d.options.EnableFallback {
-			data, err = d.dnsclient.ResolveWithSyscall(hostname)
-		}
-		if err != nil {
-			return nil, err
-		}
-		if data == nil {
-			return nil, ResolveHostError
-		}
-		if len(data.A)+len(data.AAAA) > 0 {
-			if d.mDnsCache != nil {
-				err := d.mDnsCache.Set(hostname, data)
-				if err != nil {
-					return nil, err
-				}
-			}
-
-			if d.hmDnsCache != nil {
-				b, errX := data.Marshal()
-				if errX != nil {
-					return nil, errX
-				}
-				err := d.hmDnsCache.Set(hostname, b)
-				if err != nil {
-					return nil, err
-				}
-			}
-
-		}
+	if err == nil {
 		return data, nil
 	}
+
+	data, err = d.resolveWithSearch(hostname)
+	if err != nil {
+		return nil, err
+	}
+
+	if data == nil {
+		return nil, ResolveHostError
+	}
+
+	// normalize host to original input for caching/telemetry consistency.
+	data.Host = hostname
+
+	if len(data.A)+len(data.AAAA) > 0 {
+		if d.mDnsCache != nil {
+			if setErr := d.mDnsCache.Set(hostname, data); setErr != nil {
+				return nil, setErr
+			}
+		}
+
+		if d.hmDnsCache != nil {
+			b, errX := data.Marshal()
+			if errX != nil {
+				return nil, errX
+			}
+
+			if setErr := d.hmDnsCache.Set(hostname, b); setErr != nil {
+				return nil, setErr
+			}
+		}
+	}
+
 	return data, nil
+}
+
+// resolveWithSearch replicates resolv.conf search + ndots behavior before hitting DNS.
+func (d *Dialer) resolveWithSearch(hostname string) (*retryabledns.DNSData, error) {
+	// absolute names or trailing dot skip search-domain expansion.
+	if before, ok := strings.CutSuffix(hostname, "."); ok {
+		trimmed := before
+		return d.dnsclient.Resolve(trimmed)
+	}
+
+	dotCount := strings.Count(hostname, ".")
+	var candidates []string
+
+	seen := make(map[string]struct{})
+	addCandidate := func(name string) {
+		if _, ok := seen[name]; ok {
+			return
+		}
+
+		seen[name] = struct{}{}
+		candidates = append(candidates, name)
+	}
+
+	if dotCount >= d.ndots {
+		addCandidate(hostname)
+	}
+
+	for _, domain := range d.searchDomains {
+		domain = strings.TrimSuffix(domain, ".")
+		if domain == "" {
+			continue
+		}
+
+		candidate := hostname + "." + domain
+		addCandidate(candidate)
+	}
+
+	// final absolute attempt.
+	addCandidate(hostname)
+
+	var lastErr error
+	for _, name := range candidates {
+		data, err := d.dnsclient.Resolve(name)
+		if err != nil {
+			lastErr = err
+			continue
+		}
+
+		if data != nil && (len(data.A) > 0 || len(data.AAAA) > 0) {
+			return data, nil
+		}
+
+		// if no A/AAAA but no error, keep trying other candidates.
+	}
+
+	if d.options.EnableFallback {
+		data, err := d.dnsclient.ResolveWithSyscall(hostname)
+		if err == nil {
+			return data, nil
+		}
+
+		lastErr = err
+	}
+
+	if lastErr != nil {
+		return nil, lastErr
+	}
+
+	return nil, ResolveHostError
 }
 
 var MaxDialerTimeout = time.Minute

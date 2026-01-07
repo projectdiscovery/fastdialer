@@ -74,6 +74,20 @@ type Options struct {
 	//
 	// Default is [DefaultConnExpiry].
 	ConnectionCacheExpiry time.Duration
+
+	// MaxResolverEntries limits the number of resolvers read from the resolvers
+	// file.
+	//
+	// Default is [DefaultMaxResolverEntries].
+	// Use -1 for unlimited entries.
+	MaxResolverEntries int
+
+	// Ndots enforces the resolv.conf(5) ndots: threshold for treating a name
+	// as absolute before search domains are appended (see
+	// https://man7.org/linux/man-pages/man5/resolv.conf.5.html).
+	//
+	// Default is [DefaultNdots].
+	Ndots int
 }
 
 // DefaultOptions of the cache
