@@ -130,12 +130,24 @@ func (d *Dialer) dial(ctx context.Context, opts *dialOptions) (conn net.Conn, er
 		// filter valid/invalid ips
 		for _, ip := range IPS {
 			// check if we have allow/deny list
+			// XXX: port validation - ValidateAddressWithPort?
+			// Tests break, so users would probably break too.
 			if !d.networkpolicy.Validate(ip) {
 				if d.options.OnInvalidTarget != nil {
 					d.options.OnInvalidTarget(hostname, ip, port)
 				}
 				continue
 			}
+			// Target validation callbacks to allow for port limiting etc
+			if d.options.OnValidateTarget != nil {
+				if err := d.options.OnValidateTarget(hostname, ip, port); err != nil {
+					if d.options.OnInvalidTarget != nil {
+						d.options.OnInvalidTarget(hostname, ip, port)
+					}
+					continue
+				}
+			}
+
 			if d.options.OnBeforeDial != nil {
 				d.options.OnBeforeDial(hostname, ip, port)
 			}
