@@ -74,7 +74,7 @@ func TestDialerPortPolicy(t *testing.T) {
 		ctx := context.Background()
 		conn, err := fd.Dial(ctx, "tcp", "www.projectdiscovery.io:80")
 		if conn != nil {
-			conn.Close()
+			_ = conn.Close()
 		}
 		if err != NoAddressAllowedError {
 			t.Fatalf("expected NoAddressAllowedError for denied port, got: %v", err)
@@ -96,7 +96,7 @@ func TestDialerPortPolicy(t *testing.T) {
 		if err != nil || conn == nil {
 			t.Fatalf("expected connection to succeed on non-denied port, got: %v", err)
 		}
-		conn.Close()
+		_ = conn.Close()
 	})
 
 	t.Run("AllowPortPermits", func(t *testing.T) {
@@ -114,7 +114,7 @@ func TestDialerPortPolicy(t *testing.T) {
 		if err != nil || conn == nil {
 			t.Fatalf("expected connection to succeed on allowed port, got: %v", err)
 		}
-		conn.Close()
+		_ = conn.Close()
 	})
 
 	t.Run("AllowPortBlocksOther", func(t *testing.T) {
@@ -130,7 +130,7 @@ func TestDialerPortPolicy(t *testing.T) {
 		ctx := context.Background()
 		conn, err := fd.Dial(ctx, "tcp", "www.projectdiscovery.io:80")
 		if conn != nil {
-			conn.Close()
+			_ = conn.Close()
 		}
 		if err != NoAddressAllowedError {
 			t.Fatalf("expected NoAddressAllowedError for non-allowed port, got: %v", err)
@@ -151,7 +151,7 @@ func TestDialerPortPolicy(t *testing.T) {
 		if err != nil || conn == nil {
 			t.Fatalf("expected connection to succeed without port policy, got: %v", err)
 		}
-		conn.Close()
+		_ = conn.Close()
 	})
 
 	t.Run("DenyPortTriggersOnInvalidTarget", func(t *testing.T) {
@@ -173,9 +173,9 @@ func TestDialerPortPolicy(t *testing.T) {
 		defer fd.Close()
 
 		ctx := context.Background()
-		conn, err := fd.Dial(ctx, "tcp", "www.projectdiscovery.io:80")
+		conn, _ := fd.Dial(ctx, "tcp", "www.projectdiscovery.io:80")
 		if conn != nil {
-			conn.Close()
+			_ = conn.Close()
 		}
 
 		mu.Lock()
@@ -216,7 +216,9 @@ func TestDialerTargetValidation(t *testing.T) {
 		if err != nil || conn == nil {
 			t.Fatalf("couldn't connect to target: %s", err)
 		}
-		defer conn.Close()
+		defer func() {
+			_ = conn.Close()
+		}()
 
 		if !validateCalled {
 			t.Error("OnValidateTarget was not called")
@@ -253,7 +255,7 @@ func TestDialerTargetValidation(t *testing.T) {
 		conn, err := fd.Dial(ctx, "tcp", "www.projectdiscovery.io:80")
 		if err != NoAddressAllowedError {
 			if conn != nil {
-				conn.Close()
+				_ = conn.Close()
 			}
 			t.Fatalf("expected NoAddressAllowedError, got: %v", err)
 		}
