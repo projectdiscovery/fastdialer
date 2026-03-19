@@ -96,7 +96,7 @@ func TestDial(t *testing.T) {
 		if err != nil {
 			t.Fatalf("Failed to start listener: %v", err)
 		}
-		defer listener.Close()
+		defer func() { _ = listener.Close() }()
 
 		serverAddr := listener.Addr().String()
 
@@ -109,7 +109,7 @@ func TestDial(t *testing.T) {
 
 				// hold conn w/o completing handshake
 				time.Sleep(5 * time.Second)
-				conn.Close()
+				_ = conn.Close()
 			}
 		}()
 
@@ -138,7 +138,7 @@ func TestDial(t *testing.T) {
 		if err != nil {
 			t.Fatalf("Failed to start listener: %v", err)
 		}
-		defer listener.Close()
+		defer func() { _ = listener.Close() }()
 
 		serverAddr := listener.Addr().String()
 
@@ -149,7 +149,7 @@ func TestDial(t *testing.T) {
 					return
 				}
 				time.Sleep(5 * time.Second)
-				conn.Close()
+				_ = conn.Close()
 			}
 		}()
 
