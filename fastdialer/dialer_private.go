@@ -10,6 +10,7 @@ import (
 	"log/slog"
 	"net"
 	"os"
+	"strconv"
 	"strings"
 	"sync/atomic"
 	"time"
@@ -127,18 +128,22 @@ func (d *Dialer) dial(ctx context.Context, opts *dialOptions) (conn net.Conn, er
 
 		filteredIPs := []string{}
 
+		portInt, _ := strconv.Atoi(port)
+
 		// filter valid/invalid ips
 		for _, ip := range IPS {
-			// check if we have allow/deny list
-			// XXX: port validation - ValidateAddressWithPort?
-			// Tests break, so users would probably break too.
 			if !d.networkpolicy.Validate(ip) {
 				if d.options.OnInvalidTarget != nil {
 					d.options.OnInvalidTarget(hostname, ip, port)
 				}
 				continue
 			}
-			// Target validation callbacks to allow for port limiting etc
+			if !d.validatePort(portInt) {
+				if d.options.OnInvalidTarget != nil {
+					d.options.OnInvalidTarget(hostname, ip, port)
+				}
+				continue
+			}
 			if d.options.OnValidateTarget != nil {
 				if err := d.options.OnValidateTarget(hostname, ip, port); err != nil {
 					if d.options.OnInvalidTarget != nil {
@@ -147,7 +152,6 @@ func (d *Dialer) dial(ctx context.Context, opts *dialOptions) (conn net.Conn, er
 					continue
 				}
 			}
-
 			if d.options.OnBeforeDial != nil {
 				d.options.OnBeforeDial(hostname, ip, port)
 			}
@@ -447,4 +451,21 @@ func closeAfterTimeout(d time.Duration, c ...io.Closer) context.CancelFunc {
 	}
 
 	return ctxDone
+}
+
+func (d *Dialer) validatePort(port int) bool {
+	for _, p := range d.options.DenyPortList {
+		if p == port {
+			return false
+		}
+	}
+	if len(d.options.AllowPortList) > 0 {
+		for _, p := range d.options.AllowPortList {
+			if p == port {
+				return true
+			}
+		}
+		return false
+	}
+	return true
 }

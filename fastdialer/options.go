@@ -33,35 +33,33 @@ const (
 )
 
 type Options struct {
-	BaseResolvers       []string
-	MaxRetries          int
-	HostsFile           bool
-	ResolversFile       bool
-	EnableFallback      bool
-	Allow               []string
-	Deny                []string
-	AllowSchemeList     []string
-	DenySchemeList      []string
-	AllowPortList       []int
-	DenyPortList        []int
-	CacheType           CacheType
-	CacheMemoryMaxItems int // used by Memory cache type
-	DiskDbType          DiskDBType
-	WithDialerHistory   bool
-	WithCleanup         bool
-	WithTLSData         bool
-	DialerTimeout       time.Duration
-	DialerKeepAlive     time.Duration
-	Dialer              *net.Dialer
-	ProxyDialer         *proxy.Dialer
-	WithZTLS            bool
-	SNIName             string
-	OnBeforeDial        func(hostname, IP, port string)
-
-	// OnValidateTarget is called before dialing.
+	BaseResolvers            []string
+	MaxRetries               int
+	HostsFile                bool
+	ResolversFile            bool
+	EnableFallback           bool
+	Allow                    []string
+	Deny                     []string
+	AllowSchemeList          []string
+	DenySchemeList           []string
+	AllowPortList            []int
+	DenyPortList             []int
+	CacheType                CacheType
+	CacheMemoryMaxItems      int // used by Memory cache type
+	DiskDbType               DiskDBType
+	WithDialerHistory        bool
+	WithCleanup              bool
+	WithTLSData              bool
+	DialerTimeout            time.Duration
+	DialerKeepAlive          time.Duration
+	Dialer                   *net.Dialer
+	ProxyDialer              *proxy.Dialer
+	WithZTLS                 bool
+	SNIName                  string
+	OnBeforeDial             func(hostname, IP, port string)
+	// OnValidateTarget is called after network policy validation and before dialing.
 	// If it returns an error, the target is considered invalid.
-	OnValidateTarget func(hostname, IP, port string) error
-
+	OnValidateTarget         func(hostname, IP, port string) error
 	OnInvalidTarget          func(hostname, IP, port string)
 	OnDialCallback           func(hostname, IP string)
 	DisableZtlsFallback      bool
