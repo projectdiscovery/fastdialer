@@ -153,7 +153,7 @@ func (d *DialWrap) DialContext(ctx context.Context, _ string, _ string) (net.Con
 		err := d.err
 		d.firstConnCond.L.Unlock()
 
-		if err != nil && !errkit.Is(err, ErrInflightCancel) && !errkit.Is(err, context.Canceled) {
+		if err != nil && !errkit.Is(err, ErrInflightCancel) && !errkit.Is(err, context.Canceled) && !errkit.Is(err, context.DeadlineExceeded) {
 			return nil, err
 		}
 		return d.dial(ctx)
@@ -274,7 +274,7 @@ func (d *DialWrap) dialAllParallel(ctx context.Context) ([]*dialResult, error) {
 
 				return conns, nil
 			} else {
-				if !errkit.Is(result.error, ErrInflightCancel) && !errkit.Is(result.error, context.Canceled) {
+				if !errkit.Is(result.error, ErrInflightCancel) && !errkit.Is(result.error, context.Canceled) && !errkit.Is(result.error, context.DeadlineExceeded) {
 					errs = append(errs, result)
 				}
 			}
@@ -293,7 +293,7 @@ func (d *DialWrap) dialAllParallel(ctx context.Context) ([]*dialResult, error) {
 	}
 
 	// If not inflight cancel then it is a permanent error (port closed/filtered)
-	if !errkit.Is(finalErr, ErrInflightCancel) {
+	if !errkit.Is(finalErr, ErrInflightCancel) && !errkit.Is(finalErr, context.Canceled) && !errkit.Is(finalErr, context.DeadlineExceeded) {
 		return nil, errkit.Append(ErrPortClosedOrFiltered, finalErr)
 	}
 
