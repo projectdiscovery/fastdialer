@@ -8,11 +8,11 @@ require (
 	github.com/docker/go-units v0.5.0
 	github.com/miekg/dns v1.1.62
 	github.com/projectdiscovery/goleak v0.0.0-20240729222606-a7d18edc33f8
-	github.com/projectdiscovery/hmap v0.0.99
+	github.com/projectdiscovery/hmap v0.0.100
 	github.com/projectdiscovery/networkpolicy v0.1.34
 	github.com/projectdiscovery/retryabledns v1.0.113
 	github.com/projectdiscovery/utils v0.9.0
-	github.com/refraction-networking/utls v1.7.1
+	github.com/refraction-networking/utls v1.8.2
 	github.com/stretchr/testify v1.11.1
 	github.com/zmap/zcrypto v0.0.0-20240803002437-3a861682ac77
 	golang.org/x/exp v0.0.0-20250106191152-7588d65b2ba8
@@ -25,7 +25,6 @@ require (
 	github.com/andybalholm/brotli v1.2.0 // indirect
 	github.com/asaskevich/govalidator v0.0.0-20230301143203-a9d515a09cc2 // indirect
 	github.com/aymerick/douceur v0.2.0 // indirect
-	github.com/cloudflare/circl v1.6.1 // indirect
 	github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc // indirect
 	github.com/fsnotify/fsnotify v1.6.0 // indirect
 	github.com/gaissmai/bart v0.26.0 // indirect
