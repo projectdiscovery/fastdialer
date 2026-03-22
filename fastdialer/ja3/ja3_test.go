@@ -68,7 +68,7 @@ func newLocalTLSServer(t *testing.T) (net.Listener, *x509.CertPool, func()) {
 			go func(c net.Conn) {
 				defer c.Close()
 				buf := make([]byte, 1)
-				c.Read(buf)
+				_, _ = c.Read(buf)
 			}(conn)
 		}
 	}()
