@@ -10,6 +10,7 @@ import (
 	"encoding/pem"
 	"math/big"
 	"net"
+	"sync"
 	"testing"
 	"time"
 
@@ -20,6 +21,7 @@ import (
 
 // newLocalTLSServer starts a TLS server on localhost with a self-signed cert
 // and returns the listener, the CA cert pool, and a cleanup function.
+// The cleanup function closes the listener and waits for all goroutines to exit.
 func newLocalTLSServer(t *testing.T) (net.Listener, *x509.CertPool, func()) {
 	t.Helper()
 
@@ -59,21 +61,39 @@ func newLocalTLSServer(t *testing.T) (net.Listener, *x509.CertPool, func()) {
 	ln, err := tls.Listen("tcp", "127.0.0.1:0", tlsConfig)
 	require.NoError(t, err)
 
+	var mu sync.Mutex
+	var conns []net.Conn
+	var wg sync.WaitGroup
+
+	wg.Add(1)
 	go func() {
+		defer wg.Done()
 		for {
 			conn, err := ln.Accept()
 			if err != nil {
 				return
 			}
+			mu.Lock()
+			conns = append(conns, conn)
+			mu.Unlock()
+			wg.Add(1)
 			go func(c net.Conn) {
-				defer c.Close()
+				defer wg.Done()
 				buf := make([]byte, 1)
 				_, _ = c.Read(buf)
 			}(conn)
 		}
 	}()
 
-	return ln, pool, func() { ln.Close() }
+	return ln, pool, func() {
+		ln.Close()
+		mu.Lock()
+		for _, c := range conns {
+			c.Close()
+		}
+		mu.Unlock()
+		wg.Wait()
+	}
 }
 
 func TestParseWithJa3_BasicParsing(t *testing.T) {
