@@ -28,11 +28,6 @@ func ParseWithJa3(ja3 string) (*utls.ClientHelloSpec, error) {
 		return nil, err
 	}
 
-	extensions, err := parseExtensions(ja3tokens[2])
-	if err != nil {
-		return nil, err
-	}
-
 	supportedCurves, err := parseSupportedCurves(ja3tokens[3])
 	if err != nil {
 		return nil, err
@@ -46,6 +41,11 @@ func ParseWithJa3(ja3 string) (*utls.ClientHelloSpec, error) {
 	extMap := getExtensionMap()
 	extMap["10"] = &utls.SupportedCurvesExtension{Curves: supportedCurves}
 	extMap["11"] = &utls.SupportedPointsExtension{SupportedPoints: supportedPoints}
+
+	extensions, err := parseExtensions(ja3tokens[2], extMap)
+	if err != nil {
+		return nil, err
+	}
 
 	return &utls.ClientHelloSpec{
 		TLSVersMin:         vid,
@@ -86,7 +86,7 @@ func parseCipherSuites(cipherToken string) ([]uint16, error) {
 	return cipherSuites, nil
 }
 
-func parseExtensions(extensionToken string) ([]utls.TLSExtension, error) {
+func parseExtensions(extensionToken string, extMap map[string]utls.TLSExtension) ([]utls.TLSExtension, error) {
 	var extensions []utls.TLSExtension
 	extensionToken = cleanup(extensionToken)
 	if extensionToken == "" {
@@ -94,7 +94,7 @@ func parseExtensions(extensionToken string) ([]utls.TLSExtension, error) {
 	}
 	exts := strings.Split(extensionToken, "-")
 	for _, ext := range exts {
-		te, ok := defaultExtensionMap[ext]
+		te, ok := extMap[ext]
 		if !ok {
 			return nil, ErrExtensionNotExist(ext)
 		}
