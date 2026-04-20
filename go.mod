@@ -11,7 +11,7 @@ require (
 	github.com/projectdiscovery/hmap v0.0.100
 	github.com/projectdiscovery/networkpolicy v0.1.34
 	github.com/projectdiscovery/retryabledns v1.0.113
-	github.com/projectdiscovery/utils v0.9.0
+	github.com/projectdiscovery/utils v0.10.1
 	github.com/refraction-networking/utls v1.8.2
 	github.com/stretchr/testify v1.11.1
 	github.com/zmap/zcrypto v0.0.0-20240803002437-3a861682ac77
@@ -54,7 +54,7 @@ require (
 	go.uber.org/multierr v1.11.0 // indirect
 	golang.org/x/crypto v0.46.0 // indirect
 	golang.org/x/mod v0.30.0 // indirect
-	golang.org/x/sys v0.39.0 // indirect
+	golang.org/x/sys v0.41.0 // indirect
 	golang.org/x/text v0.32.0 // indirect
 	golang.org/x/tools v0.39.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
