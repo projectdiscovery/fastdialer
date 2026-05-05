@@ -123,7 +123,8 @@ func (d *Dialer) dial(ctx context.Context, opts *dialOptions) (conn net.Conn, er
 			if err != nil || len(data.A)+len(data.AAAA) == 0 {
 				return nil, NoAddressFoundError
 			}
-			IPS = append(IPS, append(data.A, data.AAAA...)...)
+			IPS = append(IPS, data.A...)
+			IPS = append(IPS, data.AAAA...)
 		}
 
 		filteredIPs := []string{}
