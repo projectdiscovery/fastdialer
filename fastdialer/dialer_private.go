@@ -261,6 +261,8 @@ func (d *Dialer) dialIPS(ctx context.Context, l4 l4dialer, opts *dialOptions) (c
 			TlsConn := tls.Client(l4Conn, tlsconfigCopy)
 			handshakeDoneCancel := closeAfterTimeout(d.GetTimeout(), TlsConn)
 			if err := TlsConn.HandshakeContext(ctx); err != nil {
+				handshakeDoneCancel()
+				_ = TlsConn.Close()
 				return nil, errkit.Wrap(err, "could not tls handshake")
 			}
 			handshakeDoneCancel()
@@ -293,6 +295,8 @@ func (d *Dialer) dialIPS(ctx context.Context, l4 l4dialer, opts *dialOptions) (c
 			}
 			handshakeDoneCancel := closeAfterTimeout(d.GetTimeout(), uTLSConn)
 			if err := uTLSConn.Handshake(); err != nil {
+				handshakeDoneCancel()
+				_ = uTLSConn.Close()
 				return nil, err
 			}
 			handshakeDoneCancel()
