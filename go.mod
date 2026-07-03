@@ -1,6 +1,6 @@
 module github.com/projectdiscovery/fastdialer
 
-go 1.24.0
+go 1.25.0
 
 require (
 	github.com/Mzack9999/gcache v0.0.0-20230410081825-519e28eab057
@@ -16,8 +16,8 @@ require (
 	github.com/stretchr/testify v1.11.1
 	github.com/zmap/zcrypto v0.0.0-20240803002437-3a861682ac77
 	golang.org/x/exp v0.0.0-20250106191152-7588d65b2ba8
-	golang.org/x/net v0.48.0
-	golang.org/x/sync v0.19.0
+	golang.org/x/net v0.55.0
+	golang.org/x/sync v0.20.0
 )
 
 require (
@@ -52,10 +52,10 @@ require (
 	github.com/zmap/rc2 v0.0.0-20190804163417-abaa70531248 // indirect
 	go.etcd.io/bbolt v1.3.7 // indirect
 	go.uber.org/multierr v1.11.0 // indirect
-	golang.org/x/crypto v0.46.0 // indirect
-	golang.org/x/mod v0.30.0 // indirect
-	golang.org/x/sys v0.41.0 // indirect
-	golang.org/x/text v0.32.0 // indirect
-	golang.org/x/tools v0.39.0 // indirect
+	golang.org/x/crypto v0.51.0 // indirect
+	golang.org/x/mod v0.35.0 // indirect
+	golang.org/x/sys v0.45.0 // indirect
+	golang.org/x/text v0.37.0 // indirect
+	golang.org/x/tools v0.44.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
