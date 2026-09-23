@@ -6,7 +6,6 @@ import (
 	"crypto/tls"
 	"encoding/json"
 	"fmt"
-	"io"
 	"log/slog"
 	"net"
 	"os"
@@ -18,7 +17,6 @@ import (
 	"github.com/projectdiscovery/fastdialer/fastdialer/ja3/impersonate"
 	"github.com/projectdiscovery/fastdialer/fastdialer/utils"
 	retryabledns "github.com/projectdiscovery/retryabledns"
-	ctxutil "github.com/projectdiscovery/utils/context"
 	cryptoutil "github.com/projectdiscovery/utils/crypto"
 	"github.com/projectdiscovery/utils/errkit"
 	iputil "github.com/projectdiscovery/utils/ip"
@@ -259,13 +257,12 @@ func (d *Dialer) dialIPS(ctx context.Context, l4 l4dialer, opts *dialOptions) (c
 				return nil, d.handleDialError(err, opts)
 			}
 			TlsConn := tls.Client(l4Conn, tlsconfigCopy)
-			handshakeDoneCancel := closeAfterTimeout(d.GetTimeout(), TlsConn)
+			clearDeadline := d.setHandshakeDeadline(ctx, l4Conn)
 			if err := TlsConn.HandshakeContext(ctx); err != nil {
-				handshakeDoneCancel()
 				_ = TlsConn.Close()
 				return nil, errkit.Wrap(err, "could not tls handshake")
 			}
-			handshakeDoneCancel()
+			clearDeadline()
 			conn = TlsConn
 		} else {
 			nativeConn, err := l4.DialContext(ctx, opts.network, hostPort)
@@ -293,13 +290,12 @@ func (d *Dialer) dialIPS(ctx context.Context, l4 l4dialer, opts *dialOptions) (c
 			case impersonate.Chrome:
 				uTLSConn = utls.UClient(nativeConn, uTLSConfig, utls.HelloChrome_106_Shuffle)
 			}
-			handshakeDoneCancel := closeAfterTimeout(d.GetTimeout(), uTLSConn)
+			clearDeadline := d.setHandshakeDeadline(ctx, nativeConn)
 			if err := uTLSConn.Handshake(); err != nil {
-				handshakeDoneCancel()
 				_ = uTLSConn.Close()
 				return nil, err
 			}
-			handshakeDoneCancel()
+			clearDeadline()
 			conn = uTLSConn
 		}
 	} else if opts.shouldUseZTLS {
@@ -318,14 +314,11 @@ func (d *Dialer) dialIPS(ctx context.Context, l4 l4dialer, opts *dialOptions) (c
 			return nil, d.handleDialError(err, opts)
 		}
 		ztlsConn := ztls.Client(l4Conn, ztlsconfigCopy)
-		_, err = ctxutil.ExecFuncWithTwoReturns(ctx, func() (bool, error) {
-			handshakeDoneCancel := closeAfterTimeout(d.GetTimeout(), ztlsConn)
-			defer handshakeDoneCancel()
-
-			// run this in goroutine as select since this does not support context
-			return true, ztlsConn.Handshake()
-		})
+		clearDeadline := d.setHandshakeDeadline(ctx, l4Conn)
+		err = ztlsConn.Handshake()
+		clearDeadline()
 		if err != nil {
+			_ = ztlsConn.Close()
 			return nil, err
 		}
 		conn = ztlsConn
@@ -384,15 +377,11 @@ func (d *Dialer) dialIPS(ctx context.Context, l4 l4dialer, opts *dialOptions) (c
 			return nil, d.handleDialError(err, opts)
 		}
 		ztlsConn := ztls.Client(l4Conn, ztlsconfigCopy)
-
-		_, err = ctxutil.ExecFuncWithTwoReturns(ctx, func() (bool, error) {
-			handshakeDoneCancel := closeAfterTimeout(d.GetTimeout(), ztlsConn)
-			defer handshakeDoneCancel()
-
-			// run this in goroutine as select since this does not support context
-			return true, ztlsConn.Handshake()
-		})
+		clearDeadline := d.setHandshakeDeadline(ctx, l4Conn)
+		err = ztlsConn.Handshake()
+		clearDeadline()
 		if err != nil {
+			_ = ztlsConn.Close()
 			return nil, err
 		}
 		conn = ztlsConn
@@ -434,28 +423,18 @@ func (d *Dialer) handleDialError(err error, opts *dialOptions) error {
 	return errx
 }
 
-// closeAfterTimeout closes the sockets after the given duration unless the returned cancel function is called
-func closeAfterTimeout(d time.Duration, c ...io.Closer) context.CancelFunc {
-	ctx, cancel := context.WithTimeout(context.Background(), d)
-	handshakeDoneCtx, handshakeDoneCancel := context.WithCancel(context.Background())
-	go func() {
-		select {
-		case <-ctx.Done():
-			for _, cl := range c {
-				_ = cl.Close()
-			}
-			return
-		case <-handshakeDoneCtx.Done():
-			return
-		}
-	}()
-
-	ctxDone := func() {
-		handshakeDoneCancel()
-		cancel()
+// setHandshakeDeadline bounds a TLS handshake by setting an absolute deadline on
+// the underlying connection, derived from the dialer timeout and any earlier
+// deadline already carried by ctx. It returns a function that clears the deadline
+// once the handshake succeeds. Using the connection deadline avoids spawning a
+// watchdog goroutine per handshake.
+func (d *Dialer) setHandshakeDeadline(ctx context.Context, conn net.Conn) func() {
+	deadline := time.Now().Add(d.GetTimeout())
+	if cd, ok := ctx.Deadline(); ok && cd.Before(deadline) {
+		deadline = cd
 	}
-
-	return ctxDone
+	_ = conn.SetDeadline(deadline)
+	return func() { _ = conn.SetDeadline(time.Time{}) }
 }
 
 func (d *Dialer) validatePort(port int) bool {

@@ -9,10 +9,9 @@ import (
 )
 
 // TestDialTLSHandshakeFailureNoGoroutineLeak ensures a failed TLS handshake
-// does not leave the closeAfterTimeout watchdog goroutine (and its timer/socket)
-// alive until the dial timeout elapses. The watchdog lives for GetTimeout
-// (>=1s) when not cancelled, so a leak is observable immediately after a burst
-// of fast handshake failures.
+// does not leak goroutines. The handshake timeout is now enforced via a
+// connection deadline rather than a per handshake watchdog goroutine, so a
+// burst of fast handshake failures must not grow the goroutine count.
 func TestDialTLSHandshakeFailureNoGoroutineLeak(t *testing.T) {
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
