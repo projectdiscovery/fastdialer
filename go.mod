@@ -9,7 +9,7 @@ require (
 	github.com/miekg/dns v1.1.62
 	github.com/projectdiscovery/goleak v0.0.0-20240729222606-a7d18edc33f8
 	github.com/projectdiscovery/hmap v0.0.102
-	github.com/projectdiscovery/networkpolicy v0.1.51
+	github.com/projectdiscovery/networkpolicy v0.1.52
 	github.com/projectdiscovery/retryabledns v1.0.116
 	github.com/projectdiscovery/utils v0.11.6
 	github.com/refraction-networking/utls v1.8.2
@@ -26,7 +26,7 @@ require (
 	github.com/asaskevich/govalidator v0.0.0-20230301143203-a9d515a09cc2 // indirect
 	github.com/aymerick/douceur v0.2.0 // indirect
 	github.com/fsnotify/fsnotify v1.6.0 // indirect
-	github.com/gaissmai/bart v0.29.0 // indirect
+	github.com/gaissmai/bart v0.29.1 // indirect
 	github.com/golang/snappy v0.0.4 // indirect
 	github.com/gorilla/css v1.0.1 // indirect
 	github.com/klauspost/compress v1.18.2 // indirect
