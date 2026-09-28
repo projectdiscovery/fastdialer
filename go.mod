@@ -1,6 +1,6 @@
 module github.com/projectdiscovery/fastdialer
 
-go 1.25.0
+go 1.26.0
 
 require (
 	github.com/Mzack9999/gcache v0.0.0-20230410081825-519e28eab057
@@ -11,7 +11,7 @@ require (
 	github.com/projectdiscovery/hmap v0.0.102
 	github.com/projectdiscovery/networkpolicy v0.1.51
 	github.com/projectdiscovery/retryabledns v1.0.116
-	github.com/projectdiscovery/utils v0.11.5
+	github.com/projectdiscovery/utils v0.11.6
 	github.com/refraction-networking/utls v1.8.2
 	github.com/stretchr/testify v1.12.1
 	github.com/zmap/zcrypto v0.0.0-20240803002437-3a861682ac77
