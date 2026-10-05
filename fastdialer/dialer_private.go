@@ -441,6 +441,10 @@ func closeAfterTimeout(d time.Duration, c ...io.Closer) context.CancelFunc {
 	go func() {
 		select {
 		case <-ctx.Done():
+			// Successful handshakes cancel both contexts; only expiry closes sockets.
+			if ctx.Err() != context.DeadlineExceeded {
+				return
+			}
 			for _, cl := range c {
 				_ = cl.Close()
 			}
