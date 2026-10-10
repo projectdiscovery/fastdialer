@@ -25,6 +25,15 @@ For more details and documentation refer [GoDoc](https://pkg.go.dev/github.com/p
 
 fastdialer by default fallbacks to using zcrypto when there is an error in TLS handshake (insufficient security level etc ). This is done to support older TLS versions and ciphers. This can be disabled in fastdialer options or by using `DISABLE_ZTLS_FALLBACK=true` environment variable. when falling back to ztls, ChromeCiphers are used
 
+### Pinning a Host to an IP
+
+`WithResolveOverride` makes dials to one host connect to the given IP instead of resolving it, like `curl --resolve`. The hostname is still sent as SNI, and other hosts dialed with the same context, such as redirect targets or a proxy, are resolved as usual.
+
+```go
+ctx := fastdialer.WithResolveOverride(context.Background(), "example.com", "192.0.2.10")
+conn, err := dialer.DialTLS(ctx, "tcp", "example.com:443")
+```
+
 # Example
 
 An Example showing usage of fastdialer as a library is specified [here](./example/main.go)
