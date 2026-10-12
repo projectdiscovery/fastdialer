@@ -65,7 +65,7 @@ type dialResult struct {
 }
 
 // DialWrap wraps the net dialer taking in and only dials
-// to given ips. This implementation retains the orignal
+// to given ips. This implementation retains the original
 // Happy Eyeballs algorithm and dual stack support.
 type DialWrap struct {
 	dialer  *net.Dialer
@@ -124,28 +124,38 @@ func NewDialWrap(dialer *net.Dialer, ips []string, network, address, port string
 
 // DialContext is the main entry point for dialing
 func (d *DialWrap) DialContext(ctx context.Context, _ string, _ string) (net.Conn, error) {
+	// The caller that starts the first connection waits for it alone. Its
+	// completion is signalled before the connection is handed over, so also
+	// waiting on that signal could dial again and leak the first connection.
+	if first := d.doFirstConnection(ctx); first != nil {
+		select {
+		case res, ok := <-first:
+			if !ok {
+				// closed channel so depending on the error
+				// either dial new or return the error
+				if d.err == nil {
+					return d.dial(ctx)
+				}
+				return nil, d.err
+			}
+			if res.Conn != nil {
+				// check expiry
+				if res.expiry.Before(time.Now()) {
+					_ = res.Close()
+					return d.dial(ctx)
+				}
+				return res.Conn, nil
+			}
+			if d.err != nil {
+				return nil, d.err
+			}
+			return nil, res.error
+		case <-ctx.Done():
+			go closeDialResults(first)
+			return nil, errkit.Append(ErrInflightCancel, ctx.Err())
+		}
+	}
 	select {
-	case res, ok := <-d.doFirstConnection(ctx):
-		if !ok {
-			// closed channel so depending on the error
-			// either dial new or return the error
-			if d.err == nil {
-				return d.dial(ctx)
-			}
-			return nil, d.err
-		}
-		if res.Conn != nil {
-			// check expiry
-			if res.expiry.Before(time.Now()) {
-				_ = res.Close()
-				return d.dial(ctx)
-			}
-			return res.Conn, nil
-		}
-		if d.err != nil {
-			return nil, d.err
-		}
-		return nil, res.error
 	case <-d.hasCompletedFirstConnection(ctx):
 		// if first connection completed and it failed due to other reasons
 		// and not due to context cancellation
@@ -159,6 +169,15 @@ func (d *DialWrap) DialContext(ctx context.Context, _ string, _ string) (net.Con
 		return d.dial(ctx)
 	case <-ctx.Done():
 		return nil, errkit.Append(ErrInflightCancel, ctx.Err())
+	}
+}
+
+// closeDialResults closes connections delivered after their caller gave up.
+func closeDialResults(results <-chan *dialResult) {
+	for res := range results {
+		if res.Conn != nil {
+			_ = res.Close()
+		}
 	}
 }
 
