@@ -18,7 +18,7 @@ func TestDialTLSHandshakeFailureNoGoroutineLeak(t *testing.T) {
 	if err != nil {
 		t.Fatalf("listen: %v", err)
 	}
-	defer ln.Close()
+	defer func() { _ = ln.Close() }()
 
 	// accept then immediately close so the client TLS handshake fails fast
 	go func() {

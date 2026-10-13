@@ -165,7 +165,6 @@ func NewDialer(options Options) (*Dialer, error) {
 		dialer = &net.Dialer{
 			Timeout:   options.DialerTimeout,
 			KeepAlive: options.DialerKeepAlive,
-			DualStack: true,
 		}
 	}
 
