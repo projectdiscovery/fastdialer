@@ -86,10 +86,10 @@ func newLocalTLSServer(t *testing.T) (net.Listener, *x509.CertPool, func()) {
 	}()
 
 	return ln, pool, func() {
-		ln.Close()
+		_ = ln.Close()
 		mu.Lock()
 		for _, c := range conns {
-			c.Close()
+			_ = c.Close()
 		}
 		mu.Unlock()
 		wg.Wait()
@@ -237,7 +237,7 @@ func TestParseWithJa3_TLSHandshake(t *testing.T) {
 
 			tcpConn, err := net.DialTimeout("tcp", addr, 5*time.Second)
 			require.NoError(t, err)
-			defer tcpConn.Close()
+			defer func() { _ = tcpConn.Close() }()
 
 			uTLSConfig := &utls.Config{
 				ServerName:         "localhost",
@@ -255,7 +255,7 @@ func TestParseWithJa3_TLSHandshake(t *testing.T) {
 
 			state := uConn.ConnectionState()
 			assert.Equal(t, uint16(tls.VersionTLS12), state.Version)
-			uConn.Close()
+			_ = uConn.Close()
 		})
 	}
 }
@@ -290,7 +290,7 @@ func TestParseWithJa3_HandshakeFailsWithoutCurves(t *testing.T) {
 
 	tcpConn, err := net.DialTimeout("tcp", addr, 5*time.Second)
 	require.NoError(t, err)
-	defer tcpConn.Close()
+	defer func() { _ = tcpConn.Close() }()
 
 	uConn := utls.UClient(tcpConn, &utls.Config{
 		ServerName:         "localhost",
@@ -301,7 +301,7 @@ func TestParseWithJa3_HandshakeFailsWithoutCurves(t *testing.T) {
 	require.NoError(t, err)
 	err = uConn.Handshake()
 	require.NoError(t, err, "handshake with curves extension should succeed")
-	uConn.Close()
+	_ = uConn.Close()
 }
 
 func TestParseWithJa3_ChromelikeJA3(t *testing.T) {
@@ -333,7 +333,7 @@ func TestParseWithJa3_ChromelikeJA3(t *testing.T) {
 
 	tcpConn, err := net.DialTimeout("tcp", addr, 5*time.Second)
 	require.NoError(t, err)
-	defer tcpConn.Close()
+	defer func() { _ = tcpConn.Close() }()
 
 	uConn := utls.UClient(tcpConn, &utls.Config{
 		ServerName:         "localhost",
@@ -347,7 +347,7 @@ func TestParseWithJa3_ChromelikeJA3(t *testing.T) {
 
 	state := uConn.ConnectionState()
 	assert.Equal(t, uint16(tls.VersionTLS12), state.Version)
-	uConn.Close()
+	_ = uConn.Close()
 }
 
 func TestParseWithJa3_RegressionNonCurveExtensions(t *testing.T) {
