@@ -295,6 +295,11 @@ func (d *Dialer) DialTLSWithConfig(ctx context.Context, network, address string,
 }
 
 // DialTLSWithConfigImpersonate dials tls with impersonation
+//
+// If config.NextProtos is set, it replaces the protocols in the ALPN extension
+// of the impersonated ClientHello, which can change its JA4 fingerprint but not
+// its JA3 one. A ClientHello without ALPN still sends none. If NextProtos is
+// empty, the ClientHello keeps its own protocols.
 func (d *Dialer) DialTLSWithConfigImpersonate(ctx context.Context, network, address string, config *tls.Config, impersonate impersonate.Strategy, identity *impersonate.Identity) (conn net.Conn, err error) {
 	return d.dial(ctx, &dialOptions{
 		network:             network,

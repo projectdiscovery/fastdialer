@@ -279,6 +279,7 @@ func (d *Dialer) dialIPS(ctx context.Context, l4 l4dialer, opts *dialOptions) (c
 				MinVersion:         tlsconfigCopy.MinVersion,
 				MaxVersion:         tlsconfigCopy.MaxVersion,
 				CipherSuites:       tlsconfigCopy.CipherSuites,
+				NextProtos:         tlsconfigCopy.NextProtos,
 			}
 			var uTLSConn *utls.UConn
 			switch opts.impersonateStrategy {
@@ -292,6 +293,12 @@ func (d *Dialer) dialIPS(ctx context.Context, l4 l4dialer, opts *dialOptions) (c
 				}
 			case impersonate.Chrome:
 				uTLSConn = utls.UClient(nativeConn, uTLSConfig, utls.HelloChrome_106_Shuffle)
+			}
+			if len(tlsconfigCopy.NextProtos) > 0 {
+				if err := setALPN(uTLSConn, tlsconfigCopy.NextProtos); err != nil {
+					_ = uTLSConn.Close()
+					return nil, err
+				}
 			}
 			handshakeDoneCancel := closeAfterTimeout(d.GetTimeout(), uTLSConn)
 			if err := uTLSConn.Handshake(); err != nil {
@@ -398,6 +405,24 @@ func (d *Dialer) dialIPS(ctx context.Context, l4 l4dialer, opts *dialOptions) (c
 		conn = ztlsConn
 	}
 	return
+}
+
+// setALPN makes conn advertise protos as its ALPN protocols.
+//
+// Parroted and custom ClientHello specs carry their own ALPN extension, which
+// overrides Config.NextProtos. The extension is replaced rather than modified
+// because specs share extensions across connections. A spec without ALPN
+// stays without it, keeping its extension set.
+func setALPN(conn *utls.UConn, protos []string) error {
+	if err := conn.BuildHandshakeState(); err != nil {
+		return err
+	}
+	for i, ext := range conn.Extensions {
+		if _, ok := ext.(*utls.ALPNExtension); ok {
+			conn.Extensions[i] = &utls.ALPNExtension{AlpnProtocols: protos}
+		}
+	}
+	return nil
 }
 
 // handleDialError is a helper function to handle dial errors
