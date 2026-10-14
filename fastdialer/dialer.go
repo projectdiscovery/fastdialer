@@ -260,14 +260,35 @@ func (d *Dialer) Dial(ctx context.Context, network, address string) (conn net.Co
 
 // DialTLS with encrypted connection
 //
-// Note that this configuration is included for compatibility with the Go
-// version <1.22, and is not intended to be secure. It is recommended to use the
-// DialTLSWithConfig or DialTLSWithConfigImpersonate methods instead.
+// Note that the default configuration is included for compatibility with Go
+// version <1.22, and is not intended to be secure. To use modern TLS with ALPN
+// ("h2", "http/1.1") and TLS 1.2+, set WithModernTLS: true or configure ALPN/TLSConfig.
 func (d *Dialer) DialTLS(ctx context.Context, network, address string) (conn net.Conn, err error) {
 	if d.options.WithZTLS {
-		return d.DialZTLSWithConfig(ctx, network, address, DefaultZTLSConfig)
+		ztlsConfig := DefaultZTLSConfig
+		if d.options.ZTLSConfig != nil {
+			ztlsConfig = d.options.ZTLSConfig
+		}
+		return d.DialZTLSWithConfig(ctx, network, address, ztlsConfig)
 	}
-	return d.DialTLSWithConfig(ctx, network, address, DefaultTLSConfig)
+
+	var tlsConfig *tls.Config
+	if d.options.TLSConfig != nil {
+		tlsConfig = d.options.TLSConfig.Clone()
+	} else if d.options.WithModernTLS {
+		tlsConfig = ModernTLSConfig.Clone()
+	} else {
+		tlsConfig = DefaultTLSConfig.Clone()
+	}
+
+	if len(d.options.ALPN) > 0 {
+		tlsConfig.NextProtos = d.options.ALPN
+	}
+	if d.options.TLSMinVersion != 0 {
+		tlsConfig.MinVersion = d.options.TLSMinVersion
+	}
+
+	return d.DialTLSWithConfig(ctx, network, address, tlsConfig)
 }
 
 // DialZTLS with encrypted connection using ztls
@@ -276,7 +297,11 @@ func (d *Dialer) DialTLS(ctx context.Context, network, address string) (conn net
 // version <1.22, and is not intended to be secure. It is recommended to use the
 // DialZTLSWithConfig method instead.
 func (d *Dialer) DialZTLS(ctx context.Context, network, address string) (conn net.Conn, err error) {
-	return d.DialZTLSWithConfig(ctx, network, address, DefaultZTLSConfig)
+	ztlsConfig := DefaultZTLSConfig
+	if d.options.ZTLSConfig != nil {
+		ztlsConfig = d.options.ZTLSConfig
+	}
+	return d.DialZTLSWithConfig(ctx, network, address, ztlsConfig)
 }
 
 // DialTLS with encrypted connection

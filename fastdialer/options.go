@@ -2,11 +2,13 @@ package fastdialer
 
 import (
 	"context"
+	"crypto/tls" 
 	"log"
 	"net"
 	"time"
 
 	"github.com/projectdiscovery/networkpolicy"
+	ztls "github.com/zmap/zcrypto/tls"
 	"golang.org/x/net/proxy"
 )
 
@@ -97,6 +99,18 @@ type Options struct {
 	// context and the error, nil on success. Targets that fail before a
 	// connection is attempted (resolution, policy) are not reported.
 	OnDialResult func(ctx context.Context, hostname, port string, err error)
+
+	// TLSConfig is an optional custom TLS configuration to use for TLS dialing.
+	TLSConfig *tls.Config
+	// ZTLSConfig is an optional custom ZTLS configuration.
+	ZTLSConfig *ztls.Config
+	// ALPN is an optional list of application protocols to offer during TLS handshake (e.g. []string{"h2", "http/1.1"}).
+	ALPN []string
+	// TLSMinVersion is an optional minimum TLS version (e.g. tls.VersionTLS12).
+	TLSMinVersion uint16
+	// WithModernTLS configures the default TLS handshake with modern secure defaults:
+	// TLS 1.2 minimum, standard cipher suites, and ALPN ["h2", "http/1.1"].
+	WithModernTLS bool
 }
 
 // DefaultOptions of the cache
