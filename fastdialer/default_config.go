@@ -31,6 +31,15 @@ var DefaultTLSConfig = &tls.Config{
 	CipherSuites:       getUnsafeCipherSuites(),
 }
 
+// ModernTLSConfig is a modern TLS configuration using Go's secure cipher defaults,
+// TLS 1.2 minimum version, and ALPN protocols ["h2", "http/1.1"].
+var ModernTLSConfig = &tls.Config{
+	Renegotiation:      tls.RenegotiateOnceAsClient,
+	InsecureSkipVerify: true,
+	MinVersion:         tls.VersionTLS12,
+	NextProtos:         []string{"h2", "http/1.1"},
+}
+
 // DefaultZTLSConfig is a default ZTLS configuration that is used by the
 // fastdialer.
 var DefaultZTLSConfig = &ztls.Config{
