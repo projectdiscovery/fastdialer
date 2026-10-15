@@ -8,6 +8,9 @@ import (
 )
 
 func AsTLSConfig(ztlsConfig *ztls.Config) (*tls.Config, error) {
+	if ztlsConfig == nil {
+		return nil, nil
+	}
 	tlsConfig := &tls.Config{
 		NextProtos:             ztlsConfig.NextProtos,
 		ServerName:             ztlsConfig.ServerName,
@@ -18,10 +21,23 @@ func AsTLSConfig(ztlsConfig *ztls.Config) (*tls.Config, error) {
 		MinVersion:             ztlsConfig.MinVersion,
 		MaxVersion:             ztlsConfig.MaxVersion,
 	}
+	if len(ztlsConfig.Certificates) > 0 {
+		tlsConfig.Certificates = make([]tls.Certificate, len(ztlsConfig.Certificates))
+		for i, cert := range ztlsConfig.Certificates {
+			tlsConfig.Certificates[i] = tls.Certificate{
+				Certificate: cert.Certificate,
+				PrivateKey:  cert.PrivateKey,
+				OCSPStaple:  cert.OCSPStaple,
+			}
+		}
+	}
 	return tlsConfig, nil
 }
 
 func AsZTLSConfig(tlsConfig *tls.Config) (*ztls.Config, error) {
+	if tlsConfig == nil {
+		return nil, nil
+	}
 	ztlsConfig := &ztls.Config{
 		NextProtos:             tlsConfig.NextProtos,
 		ServerName:             tlsConfig.ServerName,
@@ -31,6 +47,16 @@ func AsZTLSConfig(tlsConfig *tls.Config) (*ztls.Config, error) {
 		SessionTicketsDisabled: tlsConfig.SessionTicketsDisabled,
 		MinVersion:             tlsConfig.MinVersion,
 		MaxVersion:             tlsConfig.MaxVersion,
+	}
+	if len(tlsConfig.Certificates) > 0 {
+		ztlsConfig.Certificates = make([]ztls.Certificate, len(tlsConfig.Certificates))
+		for i, cert := range tlsConfig.Certificates {
+			ztlsConfig.Certificates[i] = ztls.Certificate{
+				Certificate: cert.Certificate,
+				PrivateKey:  cert.PrivateKey,
+				OCSPStaple:  cert.OCSPStaple,
+			}
+		}
 	}
 	return ztlsConfig, nil
 }
