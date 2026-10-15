@@ -25,6 +25,7 @@ import (
 	ptrutil "github.com/projectdiscovery/utils/ptr"
 	utls "github.com/refraction-networking/utls"
 	ztls "github.com/zmap/zcrypto/tls"
+	"golang.org/x/net/proxy"
 )
 
 // this l4dialer interface is used to conditionally pass net.Dialer or its wrapper
@@ -33,6 +34,65 @@ type l4dialer interface {
 }
 
 var _ l4dialer = &utils.DialWrap{}
+
+type proxyL4Dialer struct {
+	dialer  proxy.Dialer
+	timeout time.Duration
+}
+
+var _ l4dialer = &proxyL4Dialer{}
+
+func (p *proxyL4Dialer) DialContext(ctx context.Context, network, address string) (net.Conn, error) {
+	if cd, ok := p.dialer.(proxy.ContextDialer); ok {
+		if p.timeout > 0 {
+			var cancel context.CancelFunc
+			ctx, cancel = context.WithTimeout(ctx, p.timeout)
+			defer cancel()
+		}
+		return cd.DialContext(ctx, network, address)
+	}
+
+	connectionCh := make(chan net.Conn, 1)
+	errCh := make(chan error, 1)
+	go func() {
+		conn, err := p.dialer.Dial(network, address)
+		if err != nil {
+			errCh <- err
+			return
+		}
+		connectionCh <- conn
+	}()
+
+	timeout := p.timeout
+	if deadline, ok := ctx.Deadline(); ok {
+		ctxTimeout := time.Until(deadline)
+		if timeout == 0 || (ctxTimeout > 0 && ctxTimeout < timeout) {
+			timeout = ctxTimeout
+		}
+	}
+
+	var timer *time.Timer
+	if timeout > 0 {
+		timer = time.NewTimer(timeout)
+		defer timer.Stop()
+	}
+
+	var timerCh <-chan time.Time
+	if timer != nil {
+		timerCh = timer.C
+	}
+
+	select {
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	case <-timerCh:
+		return nil, fmt.Errorf("timeout after %v", timeout)
+	case conn := <-connectionCh:
+		return conn, nil
+	case err := <-errCh:
+		return nil, err
+	}
+}
 
 type dialOptions struct {
 	network             string
@@ -172,6 +232,9 @@ func (d *Dialer) dial(ctx context.Context, opts *dialOptions) (conn net.Conn, er
 	}
 
 	var finalDialer l4dialer = d.dialer
+	if d.proxyDialer != nil {
+		finalDialer = &proxyL4Dialer{dialer: *d.proxyDialer, timeout: d.options.DialerTimeout}
+	}
 
 	if dw == nil && hostname != "" && len(IPS) > 0 && d.proxyDialer == nil {
 		// only cache it if below conditions are met
@@ -337,34 +400,8 @@ func (d *Dialer) dialIPS(ctx context.Context, l4 l4dialer, opts *dialOptions) (c
 		}
 		conn = ztlsConn
 	} else {
-		if d.proxyDialer != nil {
-			dialer := *d.proxyDialer
-			// timeout not working for socks5 proxy dialer
-			// tying to handle it here
-			connectionCh := make(chan net.Conn, 1)
-			errCh := make(chan error, 1)
-			go func() {
-				conn, err = dialer.Dial(opts.network, hostPort)
-				if err != nil {
-					errCh <- err
-					return
-				}
-				connectionCh <- conn
-			}()
-			// using timer as time.After is not recovered by GC
-			dialerTime := time.NewTimer(d.options.DialerTimeout)
-			defer dialerTime.Stop()
-			select {
-			case <-dialerTime.C:
-				return nil, fmt.Errorf("timeout after %v", d.options.DialerTimeout)
-			case conn = <-connectionCh:
-			case err = <-errCh:
-			}
-			err = d.handleDialError(err, opts)
-		} else {
-			conn, err = l4.DialContext(ctx, opts.network, hostPort)
-			err = d.handleDialError(err, opts)
-		}
+		conn, err = l4.DialContext(ctx, opts.network, hostPort)
+		err = d.handleDialError(err, opts)
 	}
 	// fallback to ztls  in case of handshake error with chrome ciphers
 	// ztls fallback can either be disabled by setting env variable DISABLE_ZTLS_FALLBACK=true or by setting DisableZtlsFallback=true in options
