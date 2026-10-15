@@ -274,12 +274,47 @@ func (d *Dialer) dialIPS(ctx context.Context, l4 l4dialer, opts *dialOptions) (c
 			}
 			// clone existing tls config
 			uTLSConfig := &utls.Config{
-				InsecureSkipVerify: tlsconfigCopy.InsecureSkipVerify,
-				ServerName:         tlsconfigCopy.ServerName,
-				MinVersion:         tlsconfigCopy.MinVersion,
-				MaxVersion:         tlsconfigCopy.MaxVersion,
-				CipherSuites:       tlsconfigCopy.CipherSuites,
-				NextProtos:         tlsconfigCopy.NextProtos,
+				InsecureSkipVerify:    tlsconfigCopy.InsecureSkipVerify,
+				ServerName:            tlsconfigCopy.ServerName,
+				MinVersion:            tlsconfigCopy.MinVersion,
+				MaxVersion:            tlsconfigCopy.MaxVersion,
+				CipherSuites:          tlsconfigCopy.CipherSuites,
+				NextProtos:            tlsconfigCopy.NextProtos,
+				RootCAs:               tlsconfigCopy.RootCAs,
+				ClientCAs:             tlsconfigCopy.ClientCAs,
+				VerifyPeerCertificate: tlsconfigCopy.VerifyPeerCertificate,
+				KeyLogWriter:          tlsconfigCopy.KeyLogWriter,
+			}
+			if len(tlsconfigCopy.Certificates) > 0 {
+				uTLSConfig.Certificates = make([]utls.Certificate, len(tlsconfigCopy.Certificates))
+				for i, cert := range tlsconfigCopy.Certificates {
+					uTLSConfig.Certificates[i] = utls.Certificate{
+						Certificate:                 cert.Certificate,
+						PrivateKey:                  cert.PrivateKey,
+						OCSPStaple:                  cert.OCSPStaple,
+						SignedCertificateTimestamps: cert.SignedCertificateTimestamps,
+						Leaf:                        cert.Leaf,
+					}
+				}
+			}
+			if tlsconfigCopy.VerifyConnection != nil {
+				verifyConn := tlsconfigCopy.VerifyConnection
+				uTLSConfig.VerifyConnection = func(cs utls.ConnectionState) error {
+					return verifyConn(tls.ConnectionState{
+						Version:                     cs.Version,
+						HandshakeComplete:           cs.HandshakeComplete,
+						DidResume:                   cs.DidResume,
+						CipherSuite:                 cs.CipherSuite,
+						NegotiatedProtocol:          cs.NegotiatedProtocol,
+						NegotiatedProtocolIsMutual:  cs.NegotiatedProtocolIsMutual,
+						ServerName:                  cs.ServerName,
+						PeerCertificates:            cs.PeerCertificates,
+						VerifiedChains:              cs.VerifiedChains,
+						SignedCertificateTimestamps: cs.SignedCertificateTimestamps,
+						OCSPResponse:                cs.OCSPResponse,
+						TLSUnique:                   cs.TLSUnique,
+					})
+				}
 			}
 			var uTLSConn *utls.UConn
 			switch opts.impersonateStrategy {
