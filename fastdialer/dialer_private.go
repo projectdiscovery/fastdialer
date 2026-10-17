@@ -272,14 +272,21 @@ func (d *Dialer) dialIPS(ctx context.Context, l4 l4dialer, opts *dialOptions) (c
 			if err != nil {
 				return nil, d.handleDialError(err, opts)
 			}
+			sessionCache := newUTLSSessionCache(tlsconfigCopy.ClientSessionCache)
 			// clone existing tls config
 			uTLSConfig := &utls.Config{
-				InsecureSkipVerify: tlsconfigCopy.InsecureSkipVerify,
-				ServerName:         tlsconfigCopy.ServerName,
-				MinVersion:         tlsconfigCopy.MinVersion,
-				MaxVersion:         tlsconfigCopy.MaxVersion,
-				CipherSuites:       tlsconfigCopy.CipherSuites,
-				NextProtos:         tlsconfigCopy.NextProtos,
+				InsecureSkipVerify:                 tlsconfigCopy.InsecureSkipVerify,
+				ServerName:                         tlsconfigCopy.ServerName,
+				MinVersion:                         tlsconfigCopy.MinVersion,
+				MaxVersion:                         tlsconfigCopy.MaxVersion,
+				CipherSuites:                       tlsconfigCopy.CipherSuites,
+				NextProtos:                         tlsconfigCopy.NextProtos,
+				SessionTicketsDisabled:             tlsconfigCopy.SessionTicketsDisabled,
+				PreferSkipResumptionOnNilExtension: true,
+				OmitEmptyPsk:                       true,
+			}
+			if sessionCache != nil {
+				uTLSConfig.ClientSessionCache = sessionCache
 			}
 			var uTLSConn *utls.UConn
 			switch opts.impersonateStrategy {
@@ -287,12 +294,16 @@ func (d *Dialer) dialIPS(ctx context.Context, l4 l4dialer, opts *dialOptions) (c
 				uTLSConn = utls.UClient(nativeConn, uTLSConfig, utls.HelloRandomized)
 			case impersonate.Custom:
 				uTLSConn = utls.UClient(nativeConn, uTLSConfig, utls.HelloCustom)
-				clientHelloSpec := utls.ClientHelloSpec(ptrutil.Safe(opts.impersonateIdentity))
+				clientHelloSpec := cloneClientHelloSpec(ptrutil.Safe(opts.impersonateIdentity))
 				if err := uTLSConn.ApplyPreset(&clientHelloSpec); err != nil {
+					_ = uTLSConn.Close()
 					return nil, err
 				}
 			case impersonate.Chrome:
 				uTLSConn = utls.UClient(nativeConn, uTLSConfig, utls.HelloChrome_106_Shuffle)
+			}
+			if sessionCache != nil {
+				sessionCache.conn = uTLSConn
 			}
 			if len(tlsconfigCopy.NextProtos) > 0 {
 				if err := setALPN(uTLSConn, tlsconfigCopy.NextProtos); err != nil {
@@ -423,6 +434,116 @@ func setALPN(conn *utls.UConn, protos []string) error {
 		}
 	}
 	return nil
+}
+
+// cloneClientHelloSpec returns a shallow copy of identity with fresh session
+// extensions so uTLS session initialization never mutates extensions shared
+// across dials.
+func cloneClientHelloSpec(identity impersonate.Identity) utls.ClientHelloSpec {
+	spec := utls.ClientHelloSpec(identity)
+	if len(spec.Extensions) == 0 {
+		return spec
+	}
+	exts := make([]utls.TLSExtension, len(spec.Extensions))
+	for i, ext := range spec.Extensions {
+		switch ext.(type) {
+		case *utls.SessionTicketExtension:
+			exts[i] = &utls.SessionTicketExtension{}
+		case *utls.UtlsPreSharedKeyExtension:
+			exts[i] = &utls.UtlsPreSharedKeyExtension{}
+		default:
+			exts[i] = ext
+		}
+	}
+	spec.Extensions = exts
+	return spec
+}
+
+func hasExtendedMasterSecret(exts []utls.TLSExtension) bool {
+	for _, ext := range exts {
+		if _, ok := ext.(*utls.ExtendedMasterSecretExtension); ok {
+			return true
+		}
+	}
+	return false
+}
+
+// utlsSessionCache adapts a crypto/tls ClientSessionCache to utls.ClientSessionCache
+// by converting session states through their RFC 8446 / Go SessionState binary encoding.
+type utlsSessionCache struct {
+	cache tls.ClientSessionCache
+	conn  *utls.UConn
+}
+
+func newUTLSSessionCache(cache tls.ClientSessionCache) *utlsSessionCache {
+	if cache == nil {
+		return nil
+	}
+	return &utlsSessionCache{cache: cache}
+}
+
+func (c *utlsSessionCache) Get(sessionKey string) (*utls.ClientSessionState, bool) {
+	cs, ok := c.cache.Get(sessionKey)
+	if !ok || cs == nil {
+		return nil, false
+	}
+	ticket, state, err := cs.ResumptionState()
+	if err != nil || state == nil {
+		return nil, false
+	}
+	raw, err := state.Bytes()
+	if err != nil {
+		return nil, false
+	}
+	uState, err := utls.ParseSessionState(raw)
+	if err != nil && len(raw) >= 2 {
+		// Go 1.25+ appends a 2-byte curveID to TLS 1.0–1.2 SessionState encodings
+		// that uTLS's parser does not yet consume.
+		uState, err = utls.ParseSessionState(raw[:len(raw)-2])
+	}
+	if err != nil {
+		return nil, false
+	}
+	uCS, err := utls.NewResumptionState(ticket, uState)
+	if err != nil || uCS == nil {
+		return nil, false
+	}
+	// Per RFC 7627 Section 5.3, a server must abort the handshake if a TLS 1.2
+	// session negotiated extended_master_secret but the resuming ClientHello
+	// omits the extension (which can happen across randomized specs). Decline
+	// to offer such a ticket so the connection falls back to a full handshake.
+	if c.conn != nil && uCS.Vers() < utls.VersionTLS13 && uCS.EMS() && !hasExtendedMasterSecret(c.conn.Extensions) {
+		return nil, false
+	}
+	return uCS, true
+}
+
+func (c *utlsSessionCache) Put(sessionKey string, uCS *utls.ClientSessionState) {
+	if uCS == nil {
+		c.cache.Put(sessionKey, nil)
+		return
+	}
+	ticket, uState, err := uCS.ResumptionState()
+	if err != nil || uState == nil {
+		return
+	}
+	raw, err := uState.Bytes()
+	if err != nil {
+		return
+	}
+	state, err := tls.ParseSessionState(raw)
+	if err != nil && uCS.Vers() < utls.VersionTLS13 {
+		// Go 1.25+ expects a trailing 2-byte curveID on TLS 1.0–1.2 SessionState encodings.
+		state, err = tls.ParseSessionState(append(raw, 0, 0))
+	}
+	if err != nil {
+		return
+	}
+	cs, err := tls.NewResumptionState(ticket, state)
+	if err != nil {
+		return
+	}
+	c.cache.Put(sessionKey, cs)
 }
 
 // handleDialError is a helper function to handle dial errors
