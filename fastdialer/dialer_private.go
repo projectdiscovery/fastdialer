@@ -10,6 +10,7 @@ import (
 	"log/slog"
 	"net"
 	"os"
+	"slices"
 	"strconv"
 	"strings"
 	"sync/atomic"
@@ -272,23 +273,20 @@ func (d *Dialer) dialIPS(ctx context.Context, l4 l4dialer, opts *dialOptions) (c
 			if err != nil {
 				return nil, d.handleDialError(err, opts)
 			}
-			// clone existing tls config
-			uTLSConfig := &utls.Config{
-				InsecureSkipVerify: tlsconfigCopy.InsecureSkipVerify,
-				ServerName:         tlsconfigCopy.ServerName,
-				MinVersion:         tlsconfigCopy.MinVersion,
-				MaxVersion:         tlsconfigCopy.MaxVersion,
-				CipherSuites:       tlsconfigCopy.CipherSuites,
-				NextProtos:         tlsconfigCopy.NextProtos,
-			}
+			uTLSConfig := asUTLSConfig(tlsconfigCopy)
 			var uTLSConn *utls.UConn
 			switch opts.impersonateStrategy {
 			case impersonate.Random:
 				uTLSConn = utls.UClient(nativeConn, uTLSConfig, utls.HelloRandomized)
 			case impersonate.Custom:
+				spec, ownSession := newClientHelloSpec(opts.impersonateIdentity)
+				// utls panics when it loads a cached session into an
+				// extension that already holds one
+				if ownSession {
+					uTLSConfig.ClientSessionCache = nil
+				}
 				uTLSConn = utls.UClient(nativeConn, uTLSConfig, utls.HelloCustom)
-				clientHelloSpec := utls.ClientHelloSpec(ptrutil.Safe(opts.impersonateIdentity))
-				if err := uTLSConn.ApplyPreset(&clientHelloSpec); err != nil {
+				if err := uTLSConn.ApplyPreset(spec); err != nil {
 					return nil, err
 				}
 			case impersonate.Chrome:
@@ -405,6 +403,43 @@ func (d *Dialer) dialIPS(ctx context.Context, l4 l4dialer, opts *dialOptions) (c
 		conn = ztlsConn
 	}
 	return
+}
+
+// newClientHelloSpec returns the spec of identity for one connection, and
+// whether the identity sets its own session.
+//
+// Specs share extensions across connections, but utls stores the state of a
+// connection in some of them: the server name and key shares it fills in, and
+// the session it resumes. A later connection would keep the server name of an
+// earlier one, reuse key shares without their private keys, and fail or panic
+// on a stored session, so the spec gets its own copies of these extensions.
+//
+// The spec keeps a server name or session ticket that the identity sets
+// itself, and session extensions of other types, such as the
+// FakePreSharedKeyExtension of ja3.ParseWithRaw. utls can't put a cached
+// session in those.
+func newClientHelloSpec(identity *impersonate.Identity) (spec *utls.ClientHelloSpec, ownSession bool) {
+	s := utls.ClientHelloSpec(ptrutil.Safe(identity))
+	s.Extensions = slices.Clone(s.Extensions)
+	for i, ext := range s.Extensions {
+		switch ext := ext.(type) {
+		case *utls.SNIExtension:
+			s.Extensions[i] = &utls.SNIExtension{ServerName: ext.ServerName}
+		case *utls.KeyShareExtension:
+			s.Extensions[i] = &utls.KeyShareExtension{KeyShares: slices.Clone(ext.KeyShares)}
+		case *utls.SessionTicketExtension:
+			if ext.Initialized {
+				ownSession = true
+			} else {
+				s.Extensions[i] = &utls.SessionTicketExtension{}
+			}
+		case *utls.UtlsPreSharedKeyExtension:
+			s.Extensions[i] = &utls.UtlsPreSharedKeyExtension{}
+		case utls.ISessionTicketExtension, utls.PreSharedKeyExtension:
+			ownSession = true
+		}
+	}
+	return &s, ownSession
 }
 
 // setALPN makes conn advertise protos as its ALPN protocols.
