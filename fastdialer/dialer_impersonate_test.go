@@ -430,3 +430,37 @@ func TestDialTLSWithConfigImpersonateHonorsNextProtos(t *testing.T) {
 		t.Fatalf("identity ALPN changed to %q, want %q", got, identityALPN)
 	}
 }
+
+func TestRandomClientHelloPairsHybridKeyShare(t *testing.T) {
+	client, server := net.Pipe()
+	t.Cleanup(func() {
+		_ = client.Close()
+		_ = server.Close()
+	})
+
+	sawHybrid := false
+	for i := range 40 {
+		uconn := utls.UClient(client, &utls.Config{InsecureSkipVerify: true, ServerName: "example.com"}, randomClientHelloID())
+		if err := uconn.BuildHandshakeState(); err != nil {
+			t.Fatalf("hello %d: %v", i, err)
+		}
+		hello := uconn.HandshakeState.Hello
+		if hello == nil {
+			t.Fatalf("hello %d: missing client hello", i)
+		}
+		offered := slices.Contains(hello.SupportedCurves, utls.X25519MLKEM768)
+		shared := false
+		for _, share := range hello.KeyShares {
+			if share.Group == utls.X25519MLKEM768 && len(share.Data) > 0 {
+				shared = true
+			}
+		}
+		if offered != shared {
+			t.Fatalf("hello %d: hybrid curve %v, key share %v", i, offered, shared)
+		}
+		sawHybrid = sawHybrid || offered
+	}
+	if !sawHybrid {
+		t.Fatal("no randomized hello offered X25519MLKEM768")
+	}
+}

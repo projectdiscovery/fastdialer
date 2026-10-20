@@ -277,7 +277,7 @@ func (d *Dialer) dialIPS(ctx context.Context, l4 l4dialer, opts *dialOptions) (c
 			var uTLSConn *utls.UConn
 			switch opts.impersonateStrategy {
 			case impersonate.Random:
-				uTLSConn = utls.UClient(nativeConn, uTLSConfig, utls.HelloRandomized)
+				uTLSConn = utls.UClient(nativeConn, uTLSConfig, randomClientHelloID())
 			case impersonate.Custom:
 				spec, ownSession := newClientHelloSpec(opts.impersonateIdentity)
 				// utls panics when it loads a cached session into an
@@ -403,6 +403,18 @@ func (d *Dialer) dialIPS(ctx context.Context, l4 l4dialer, opts *dialOptions) (c
 		conn = ztlsConn
 	}
 	return
+}
+
+// randomClientHelloID is HelloRandomized with the hybrid group tied to its key
+// share. utls cannot answer a HelloRetryRequest for X25519MLKEM768, so a hello
+// that advertises that group without a share fails when the server asks for it.
+func randomClientHelloID() utls.ClientHelloID {
+	weights := utls.DefaultWeights
+	weights.CurveIDs_Append_X25519 = 1
+	weights.KeyShare_Append_RandomGroups = 1
+	id := utls.HelloRandomized
+	id.Weights = &weights
+	return id
 }
 
 // newClientHelloSpec returns the spec of identity for one connection, and
