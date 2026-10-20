@@ -18,6 +18,7 @@ var defaultExtensionMap = map[string]utls.TLSExtension{
 	// These are applied later
 	// "10": &tls.SupportedCurvesExtension{...}
 	// "11": &tls.SupportedPointsExtension{...}
+	// "51": &tls.KeyShareExtension{...}
 	"13": &utls.SignatureAlgorithmsExtension{
 		SupportedSignatureAlgorithms: []utls.SignatureScheme{
 			utls.ECDSAWithP256AndSHA256,
@@ -50,7 +51,6 @@ var defaultExtensionMap = map[string]utls.TLSExtension{
 		Modes: []uint8{
 			utls.PskModeDHE,
 		}},
-	"51":    &utls.KeyShareExtension{KeyShares: []utls.KeyShare{}},
 	"13172": &utls.NPNExtension{},
 	"65281": &utls.RenegotiationInfoExtension{
 		Renegotiation: utls.RenegotiateOnceAsClient,
