@@ -39,7 +39,7 @@ func ParseWithJa3(ja3 string) (*utls.ClientHelloSpec, error) {
 		return nil, err
 	}
 
-	extMap := getExtensionMap()
+	extMap := newExtensionMap()
 	extMap["10"] = &utls.SupportedCurvesExtension{Curves: supportedCurves}
 	extMap["11"] = &utls.SupportedPointsExtension{SupportedPoints: supportedPoints}
 	extMap["51"] = &utls.KeyShareExtension{KeyShares: keyShares(supportedCurves)}
