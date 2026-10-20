@@ -5,6 +5,7 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"errors"
+	"fmt"
 	"io"
 	"net"
 	"net/http"
@@ -214,9 +215,9 @@ func TestDialTLSNoFallbackWhenVerifying(t *testing.T) {
 }
 
 // The fallback runs only when a ztls retry can reach a server that crypto/tls
-// couldn't, and keeps the server checks, client certificate and ECH settings
-// of the config. Every tls.Config field is classified, so a field added by a
-// later Go release fails this test until it is.
+// couldn't, and keeps the server checks, the GetClientCertificate callback and
+// the ECH settings of the config. Every tls.Config field is classified, so a
+// field added by a later Go release fails this test until it is.
 func TestCanFallbackToZTLS(t *testing.T) {
 	dialer := newFallbackTestDialer(t, nil)
 	handshakeErr := errors.New("tls: handshake failure")
@@ -234,7 +235,6 @@ func TestCanFallbackToZTLS(t *testing.T) {
 		"VerifyConnection": func(c *tls.Config) {
 			c.VerifyConnection = func(tls.ConnectionState) error { return nil }
 		},
-		"Certificates": func(c *tls.Config) { c.Certificates = []tls.Certificate{{Certificate: [][]byte{{1}}}} },
 		"GetClientCertificate": func(c *tls.Config) {
 			c.GetClientCertificate = func(*tls.CertificateRequestInfo) (*tls.Certificate, error) { return nil, nil }
 		},
@@ -247,7 +247,7 @@ func TestCanFallbackToZTLS(t *testing.T) {
 	}
 	nonBlocking := []string{
 		// carried over by AsZTLSConfig
-		"NextProtos", "ServerName", "ClientAuth", "SessionTicketsDisabled", "MaxVersion",
+		"Certificates", "NextProtos", "ServerName", "ClientAuth", "SessionTicketsDisabled", "MaxVersion",
 		// replaced by ztls.ChromeCiphers and the default ztls curves, which
 		// is what lets the retry reach servers that crypto/tls rejects
 		"CipherSuites", "CurvePreferences",
@@ -360,4 +360,81 @@ func TestDialZTLSClosesConnOnHandshakeError(t *testing.T) {
 	case <-time.After(3 * time.Second):
 		t.Fatal("connection still open after failed ztls handshake")
 	}
+}
+
+// A Certificates chain is copied onto the ztls retry, so the server still
+// sees the client certificate after crypto/tls fails.
+func TestDialTLSFallbackSendsCertificates(t *testing.T) {
+	conns := &atomic.Int32{}
+	srv := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = fmt.Fprintf(w, "certs=%d", len(r.TLS.PeerCertificates))
+	}))
+	srv.Config.ConnState = func(_ net.Conn, state http.ConnState) {
+		if state == http.StateNew {
+			conns.Add(1)
+		}
+	}
+	srv.TLS = &tls.Config{
+		MinVersion:   tls.VersionTLS12,
+		MaxVersion:   tls.VersionTLS12,
+		CipherSuites: []uint16{tls.TLS_RSA_WITH_AES_128_GCM_SHA256},
+		ClientAuth:   tls.RequireAnyClientCert,
+	}
+	srv.StartTLS()
+	t.Cleanup(srv.Close)
+
+	der, key := newClientCert(t)
+	cfg := ecdheOnlyConfig()
+	cfg.Certificates = []tls.Certificate{{Certificate: [][]byte{der}, PrivateKey: key}}
+
+	dialer := newFallbackTestDialer(t, nil)
+	conn, err := dialer.DialTLSWithConfig(context.Background(), "tcp", hostPort(t, srv), cfg)
+	if err != nil {
+		t.Fatalf("expected the ztls fallback to connect, got: %v", err)
+	}
+	body, err := httpGet(conn)
+	if err != nil {
+		t.Fatalf("request: %v", err)
+	}
+	if body != "certs=1" {
+		t.Fatalf("server got %q, want one certificate", body)
+	}
+	if n := conns.Load(); n != 2 {
+		t.Fatalf("server saw %d connection(s), want 2 (crypto/tls, then ztls)", n)
+	}
+}
+
+// Either DisableZtlsFallback or DISABLE_ZTLS_FALLBACK stops the retry.
+func TestDialTLSFallbackDisabledByEitherSwitch(t *testing.T) {
+	srv, conns := newRSAOnlyServer(t)
+	addr := hostPort(t, srv)
+
+	assertNoRetry := func(t *testing.T, dialer *Dialer) {
+		t.Helper()
+		conns.Store(0)
+		conn, err := dialer.DialTLSWithConfig(context.Background(), "tcp", addr, ecdheOnlyConfig())
+		if conn != nil {
+			_ = conn.Close()
+		}
+		if err == nil {
+			t.Fatal("expected a handshake error")
+		}
+		settle()
+		if n := conns.Load(); n != 1 {
+			t.Fatalf("server saw %d connection(s), want exactly 1 (no fallback)", n)
+		}
+	}
+
+	t.Run("option", func(t *testing.T) {
+		dialer := newFallbackTestDialer(t, func(o *Options) { o.DisableZtlsFallback = true })
+		assertNoRetry(t, dialer)
+	})
+
+	t.Run("environment", func(t *testing.T) {
+		previous := disableZTLSFallback
+		disableZTLSFallback = true
+		t.Cleanup(func() { disableZTLSFallback = previous })
+		dialer := newFallbackTestDialer(t, nil)
+		assertNoRetry(t, dialer)
+	})
 }

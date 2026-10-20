@@ -27,7 +27,7 @@ When the TLS handshake of `DialTLS` or `DialTLSWithConfig` fails, fastdialer ret
 
 - the dial context isn't done, the handshake didn't time out, and the server's reply, if any, was TLS.
 - the TLS config allows versions older than TLS 1.3.
-- the TLS config uses nothing that zcrypto can't carry over: `InsecureSkipVerify` is `true`, and the config sets no `VerifyPeerCertificate` or `VerifyConnection` callback, no client certificate (`Certificates` or `GetClientCertificate`) and no Encrypted Client Hello settings. Otherwise the retry would verify the server differently, connect without the client certificate, or send the hidden server name in the clear.
+- the TLS config uses nothing that zcrypto can't carry over: `InsecureSkipVerify` is `true`, and the config sets no `VerifyPeerCertificate` or `VerifyConnection` callback, no `GetClientCertificate`, and no Encrypted Client Hello settings. A `Certificates` chain is copied onto the retry. Otherwise the retry would verify the server differently, omit a certificate chosen by callback, or send the hidden server name in the clear.
 
 Plain dials, including dials through a proxy, impersonated dials and ztls dials never fall back. A dial that falls back returns a `*ztls.Conn` instead of a `*tls.Conn`, which `WithTLSData` doesn't record. If the retry fails too, the error includes both failures.
 

@@ -3,6 +3,7 @@ package ja3
 import (
 	"crypto/sha256"
 	"fmt"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -41,20 +42,56 @@ func ParseWithJa3(ja3 string) (*utls.ClientHelloSpec, error) {
 	extMap := getExtensionMap()
 	extMap["10"] = &utls.SupportedCurvesExtension{Curves: supportedCurves}
 	extMap["11"] = &utls.SupportedPointsExtension{SupportedPoints: supportedPoints}
+	extMap["51"] = &utls.KeyShareExtension{KeyShares: keyShares(supportedCurves)}
 
 	extensions, err := parseExtensions(ja3tokens[2], extMap)
 	if err != nil {
 		return nil, err
 	}
 
-	return &utls.ClientHelloSpec{
-		TLSVersMin:         vid,
-		TLSVersMax:         vid,
+	spec := &utls.ClientHelloSpec{
 		CipherSuites:       cipherSuites,
 		CompressionMethods: []byte{0},
 		Extensions:         extensions,
 		GetSessionID:       sha256.Sum256,
-	}, nil
+	}
+
+	// The JA3 version field is the ClientHello legacy_version, which TLS 1.3
+	// clients also send as TLS 1.2 (RFC 8446, section 4.1.2), so it doesn't
+	// show whether the client supports TLS 1.3. When supported_versions (43)
+	// is present, leave the versions zero and let utls derive them from it.
+	hasSupportedVersions := slices.ContainsFunc(extensions, func(e utls.TLSExtension) bool {
+		_, ok := e.(*utls.SupportedVersionsExtension)
+		return ok
+	})
+	if !hasSupportedVersions {
+		spec.TLSVersMin = vid
+		spec.TLSVersMax = vid
+	}
+
+	return spec, nil
+}
+
+// keyShares returns key shares for the first curve that utls can generate a
+// key for, leaving their data to be filled by [utls.UConn.ApplyPreset]. It
+// returns no key shares if none of the curves qualify.
+//
+// utls doesn't start a TLS 1.3 handshake without a classic ECDHE key share, so
+// X25519MLKEM768 comes with an X25519 share, as in Chrome, and is skipped when
+// X25519 isn't among the curves.
+func keyShares(curves []utls.CurveID) []utls.KeyShare {
+	for _, c := range curves {
+		switch c {
+		case utls.X25519MLKEM768:
+			if slices.Contains(curves, utls.X25519) {
+				return []utls.KeyShare{{Group: c}, {Group: utls.X25519}}
+			}
+		case utls.X25519, utls.CurveP256, utls.CurveP384, utls.CurveP521:
+			return []utls.KeyShare{{Group: c}}
+		}
+	}
+
+	return []utls.KeyShare{}
 }
 
 func cleanup(s string) string {
