@@ -201,39 +201,39 @@ func (d *Dialer) dial(ctx context.Context, opts *dialOptions) (conn net.Conn, er
 	}
 
 	conn, err = d.dialIPS(ctx, finalDialer, opts)
+	if err == nil && conn == nil {
+		err = CouldNotConnectError
+	} else if err == nil && conn.RemoteAddr() == nil {
+		err = errkit.New("remote address is nil")
+		conn = nil
+	}
 	if d.options.OnDialResult != nil {
 		d.options.OnDialResult(ctx, hostname, opts.port, err)
 	}
-	if err == nil {
-		if conn == nil {
-			err = CouldNotConnectError
-			return
+	if err != nil {
+		return
+	}
+	ip, _, _ := net.SplitHostPort(conn.RemoteAddr().String())
+	if d.options.WithDialerHistory && d.dialerHistory != nil {
+		setErr := d.dialerHistory.Set(hostname, []byte(ip))
+		if setErr != nil {
+			return nil, setErr
 		}
-		if conn.RemoteAddr() == nil {
-			return nil, errkit.New("remote address is nil")
-		}
-		ip, _, _ := net.SplitHostPort(conn.RemoteAddr().String())
-		if d.options.WithDialerHistory && d.dialerHistory != nil {
-			setErr := d.dialerHistory.Set(hostname, []byte(ip))
+	}
+	if d.options.OnDialCallback != nil {
+		d.options.OnDialCallback(hostname, ip)
+	}
+	if d.options.WithTLSData && opts.shouldUseTLS {
+		if connTLS, ok := conn.(*tls.Conn); ok {
+			var data bytes.Buffer
+			connState := connTLS.ConnectionState()
+			err := json.NewEncoder(&data).Encode(cryptoutil.TLSGrab(&connState))
+			if err != nil {
+				return nil, err
+			}
+			setErr := d.dialerTLSData.Set(hostname, data.Bytes())
 			if setErr != nil {
 				return nil, setErr
-			}
-		}
-		if d.options.OnDialCallback != nil {
-			d.options.OnDialCallback(hostname, ip)
-		}
-		if d.options.WithTLSData && opts.shouldUseTLS {
-			if connTLS, ok := conn.(*tls.Conn); ok {
-				var data bytes.Buffer
-				connState := connTLS.ConnectionState()
-				err := json.NewEncoder(&data).Encode(cryptoutil.TLSGrab(&connState))
-				if err != nil {
-					return nil, err
-				}
-				setErr := d.dialerTLSData.Set(hostname, data.Bytes())
-				if setErr != nil {
-					return nil, setErr
-				}
 			}
 		}
 	}
