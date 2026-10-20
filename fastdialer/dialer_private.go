@@ -288,38 +288,11 @@ func (d *Dialer) dialIPS(ctx context.Context, l4 l4dialer, opts *dialOptions) (c
 			if err != nil {
 				return nil, d.handleDialError(err, opts)
 			}
-			uTLSConfig := asUTLSConfig(tlsconfigCopy)
-			var uTLSConn *utls.UConn
-			switch opts.impersonateStrategy {
-			case impersonate.Random:
-				uTLSConn = utls.UClient(nativeConn, uTLSConfig, randomClientHelloID())
-			case impersonate.Custom:
-				spec, ownSession := newClientHelloSpec(opts.impersonateIdentity)
-				// utls panics when it loads a cached session into an
-				// extension that already holds one
-				if ownSession {
-					uTLSConfig.ClientSessionCache = nil
-				}
-				uTLSConn = utls.UClient(nativeConn, uTLSConfig, utls.HelloCustom)
-				if err := uTLSConn.ApplyPreset(spec); err != nil {
-					return nil, err
-				}
-			case impersonate.Chrome:
-				uTLSConn = utls.UClient(nativeConn, uTLSConfig, utls.HelloChrome_106_Shuffle)
-			}
-			if len(tlsconfigCopy.NextProtos) > 0 {
-				if err := setALPN(uTLSConn, tlsconfigCopy.NextProtos); err != nil {
-					_ = uTLSConn.Close()
-					return nil, err
-				}
-			}
-			handshakeDoneCancel := closeAfterTimeout(d.GetTimeout(), uTLSConn)
-			if err := uTLSConn.Handshake(); err != nil {
-				handshakeDoneCancel()
-				_ = uTLSConn.Close()
+			uTLSConn, err := d.handshakeImpersonated(nativeConn, tlsconfigCopy, opts)
+			if err != nil {
+				_ = nativeConn.Close()
 				return nil, err
 			}
-			handshakeDoneCancel()
 			conn = uTLSConn
 		}
 	} else if opts.shouldUseZTLS {
@@ -387,6 +360,43 @@ func (d *Dialer) dialZTLS(ctx context.Context, l4 l4dialer, opts *dialOptions, h
 		return nil, err
 	}
 	return ztlsConn, nil
+}
+
+// handshakeImpersonated runs a utls client handshake over conn with config and
+// the ClientHello of opts.impersonateStrategy. When it fails, closing conn is
+// left to the caller that dialed it, though a handshake that times out has
+// closed it already.
+func (d *Dialer) handshakeImpersonated(conn net.Conn, config *tls.Config, opts *dialOptions) (*utls.UConn, error) {
+	uTLSConfig := asUTLSConfig(config)
+	var uTLSConn *utls.UConn
+	switch opts.impersonateStrategy {
+	case impersonate.Random:
+		uTLSConn = utls.UClient(conn, uTLSConfig, randomClientHelloID())
+	case impersonate.Custom:
+		spec, ownSession := newClientHelloSpec(opts.impersonateIdentity)
+		// utls panics when it loads a cached session into an
+		// extension that already holds one
+		if ownSession {
+			uTLSConfig.ClientSessionCache = nil
+		}
+		uTLSConn = utls.UClient(conn, uTLSConfig, utls.HelloCustom)
+		if err := uTLSConn.ApplyPreset(spec); err != nil {
+			return nil, err
+		}
+	case impersonate.Chrome:
+		uTLSConn = utls.UClient(conn, uTLSConfig, utls.HelloChrome_106_Shuffle)
+	}
+	if len(config.NextProtos) > 0 {
+		if err := setALPN(uTLSConn, config.NextProtos); err != nil {
+			return nil, err
+		}
+	}
+	handshakeDoneCancel := closeAfterTimeout(d.GetTimeout(), uTLSConn)
+	defer handshakeDoneCancel()
+	if err := uTLSConn.Handshake(); err != nil {
+		return nil, err
+	}
+	return uTLSConn, nil
 }
 
 // canFallbackToZTLS reports whether a failed crypto/tls handshake (handshakeErr,
