@@ -22,7 +22,6 @@ import (
 	"github.com/projectdiscovery/retryabledns"
 	cryptoutil "github.com/projectdiscovery/utils/crypto"
 	"github.com/projectdiscovery/utils/env"
-	"github.com/projectdiscovery/utils/errkit"
 	"github.com/zmap/zcrypto/encoding/asn1"
 	ztls "github.com/zmap/zcrypto/tls"
 	"golang.org/x/net/proxy"
@@ -296,6 +295,13 @@ func (d *Dialer) DialTLSWithConfig(ctx context.Context, network, address string,
 
 // DialTLSWithConfigImpersonate dials tls with impersonation
 //
+// The config applies as in DialTLSWithConfig, except that the impersonated
+// ClientHello decides what it offers, such as cipher suites and curves. Only
+// TLS 1.3 sessions are stored in config.ClientSessionCache, and they resume
+// only when the ClientHello has a pre_shared_key extension. utls can't resume
+// a session when the server asks for another key share, so that dial fails
+// and drops the session.
+//
 // If config.NextProtos is set, it replaces the protocols in the ALPN extension
 // of the impersonated ClientHello, which can change its JA4 fingerprint but not
 // its JA3 one. A ClientHello without ALPN still sends none. If NextProtos is
@@ -315,23 +321,6 @@ func (d *Dialer) DialTLSWithConfigImpersonate(ctx context.Context, network, addr
 
 // DialZTLSWithConfig dials ztls with config
 func (d *Dialer) DialZTLSWithConfig(ctx context.Context, network, address string, config *ztls.Config) (conn net.Conn, err error) {
-	// ztls doesn't support tls13
-	if IsTLS13(config) {
-		stdTLSConfig, err := AsTLSConfig(config)
-		if err != nil {
-			return nil, errkit.Wrap(err, "could not convert ztls config to tls config")
-		}
-		return d.dial(ctx, &dialOptions{
-			network:             network,
-			address:             address,
-			shouldUseTLS:        true,
-			shouldUseZTLS:       false,
-			tlsconfig:           stdTLSConfig,
-			ztlsconfig:          nil,
-			impersonateStrategy: impersonate.None,
-			impersonateIdentity: nil,
-		})
-	}
 	return d.dial(ctx, &dialOptions{
 		network:             network,
 		address:             address,
