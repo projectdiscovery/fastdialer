@@ -361,3 +361,38 @@ func TestDialZTLSClosesConnOnHandshakeError(t *testing.T) {
 		t.Fatal("connection still open after failed ztls handshake")
 	}
 }
+
+// Either Options.DisableZtlsFallback or DISABLE_ZTLS_FALLBACK disables the
+// fallback on its own (#615). Not parallel: it changes a package variable.
+func TestZTLSFallbackDisabledBySingleSwitch(t *testing.T) {
+	tests := map[string]struct {
+		option bool
+		env    bool
+	}{
+		"OptionOnly": {option: true},
+		"EnvOnly":    {env: true},
+		"Both":       {option: true, env: true},
+	}
+	for name, tt := range tests {
+		t.Run(name, func(t *testing.T) {
+			prev := disableZTLSFallback
+			disableZTLSFallback = tt.env
+			t.Cleanup(func() { disableZTLSFallback = prev })
+
+			srv, conns := newRSAOnlyServer(t)
+			dialer := newFallbackTestDialer(t, func(o *Options) { o.DisableZtlsFallback = tt.option })
+
+			conn, err := dialer.DialTLSWithConfig(context.Background(), "tcp", hostPort(t, srv), ecdheOnlyConfig())
+			if conn != nil {
+				_ = conn.Close()
+			}
+			if err == nil {
+				t.Fatalf("expected a handshake error, got a %T", conn)
+			}
+			settle()
+			if n := conns.Load(); n != 1 {
+				t.Fatalf("server saw %d connection(s), want exactly 1 (fallback disabled)", n)
+			}
+		})
+	}
+}

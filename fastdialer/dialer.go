@@ -33,7 +33,8 @@ import (
 )
 
 // option to disable ztls fallback in case of handshake error
-// reads from env variable DISABLE_ZTLS_FALLBACK
+// reads from env variable DISABLE_ZTLS_FALLBACK; Options.DisableZtlsFallback
+// disables it too
 var (
 	disableZTLSFallback = false
 	MaxDNSCacheSize     int64

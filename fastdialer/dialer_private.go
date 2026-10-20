@@ -401,7 +401,7 @@ func (d *Dialer) dialZTLS(ctx context.Context, l4 l4dialer, opts *dialOptions, h
 // 1.3, which leaves no older version or cipher to retry with. It is also
 // refused when config doesn't carry over to ztls, see [carriesOverToZTLS].
 func (d *Dialer) canFallbackToZTLS(ctx context.Context, config *tls.Config, handshakeErr error) bool {
-	if d.options.DisableZtlsFallback && disableZTLSFallback {
+	if d.options.DisableZtlsFallback || disableZTLSFallback {
 		return false
 	}
 	if ctx.Err() != nil || errkit.Is(handshakeErr, os.ErrDeadlineExceeded) {
