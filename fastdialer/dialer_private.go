@@ -10,6 +10,7 @@ import (
 	"log/slog"
 	"net"
 	"os"
+	"reflect"
 	"slices"
 	"strconv"
 	"strings"
@@ -443,11 +444,14 @@ func randomClientHelloID() utls.ClientHelloID {
 // newClientHelloSpec returns the spec of identity for one connection, and
 // whether the identity sets its own session.
 //
-// Specs share extensions across connections, but utls stores the state of a
-// connection in some of them: the server name and key shares it fills in, and
-// the session it resumes. A later connection would keep the server name of an
-// earlier one, reuse key shares without their private keys, and fail or panic
-// on a stored session, so the spec gets its own copies of these extensions.
+// utls stores the state of a connection in the extensions of its spec: the
+// server name, GREASE values and key shares it fills in, the padding it
+// computes, and the session it resumes. Callers share an identity across dials
+// and goroutines, so the spec gets a copy of each extension, and a new
+// extension for the session that utls resumes. Otherwise concurrent dials
+// would race on the identity, and a later dial would keep the server name of
+// an earlier one, reuse key shares without their private keys, and fail or
+// panic on a stored session.
 //
 // The spec keeps a server name or session ticket that the identity sets
 // itself, and session extensions of other types, such as the
@@ -458,31 +462,49 @@ func newClientHelloSpec(identity *impersonate.Identity) (spec *utls.ClientHelloS
 	s.Extensions = slices.Clone(s.Extensions)
 	for i, ext := range s.Extensions {
 		switch ext := ext.(type) {
-		case *utls.SNIExtension:
-			s.Extensions[i] = &utls.SNIExtension{ServerName: ext.ServerName}
-		case *utls.KeyShareExtension:
-			s.Extensions[i] = &utls.KeyShareExtension{KeyShares: slices.Clone(ext.KeyShares)}
 		case *utls.SessionTicketExtension:
-			if ext.Initialized {
-				ownSession = true
-			} else {
+			if !ext.Initialized {
 				s.Extensions[i] = &utls.SessionTicketExtension{}
+				continue
 			}
+			ownSession = true
 		case *utls.UtlsPreSharedKeyExtension:
 			s.Extensions[i] = &utls.UtlsPreSharedKeyExtension{}
+			continue
 		case utls.ISessionTicketExtension, utls.PreSharedKeyExtension:
 			ownSession = true
 		}
+		s.Extensions[i] = copyExtension(ext)
 	}
 	return &s, ownSession
+}
+
+// copyExtension returns a copy of ext that utls can fill in for one connection.
+// utls assigns to the fields of an extension, and in place to the elements of
+// some of its exported slices, such as the GREASE placeholders among the curves
+// and versions, so the copy gets its own struct and exported slices. Any type
+// is copied this way, since utls doesn't document which ones it writes to. An
+// extension that isn't a pointer to a struct is returned as is.
+func copyExtension(ext utls.TLSExtension) utls.TLSExtension {
+	v := reflect.ValueOf(ext)
+	if v.Kind() != reflect.Pointer || v.IsNil() || v.Elem().Kind() != reflect.Struct {
+		return ext
+	}
+	c := reflect.New(v.Elem().Type()).Elem()
+	c.Set(v.Elem())
+	for i := range c.NumField() {
+		if f := c.Field(i); f.Kind() == reflect.Slice && f.CanSet() && !f.IsNil() {
+			f.Set(reflect.AppendSlice(reflect.MakeSlice(f.Type(), 0, f.Len()), f))
+		}
+	}
+	return c.Addr().Interface().(utls.TLSExtension)
 }
 
 // setALPN makes conn advertise protos as its ALPN protocols.
 //
 // Parroted and custom ClientHello specs carry their own ALPN extension, which
-// overrides Config.NextProtos. The extension is replaced rather than modified
-// because specs share extensions across connections. A spec without ALPN
-// stays without it, keeping its extension set.
+// overrides Config.NextProtos, so setALPN replaces that extension. A spec
+// without ALPN stays without it, keeping its extension set.
 func setALPN(conn *utls.UConn, protos []string) error {
 	if err := conn.BuildHandshakeState(); err != nil {
 		return err
