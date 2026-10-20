@@ -201,6 +201,9 @@ func (d *Dialer) dial(ctx context.Context, opts *dialOptions) (conn net.Conn, er
 	}
 
 	conn, err = d.dialIPS(ctx, finalDialer, opts)
+	if d.options.OnDialResult != nil {
+		d.options.OnDialResult(ctx, hostname, opts.port, err)
+	}
 	if err == nil {
 		if conn == nil {
 			err = CouldNotConnectError
@@ -449,7 +452,7 @@ func (d *Dialer) handleDialError(err error, opts *dialOptions) error {
 				}
 				_ = d.dialTimeoutErrors.Set(opts.connHash(), count)
 
-				// update them to permament if they happened multiple times within 30s
+				// update them to permanent if they happened multiple times within 30s
 				if count.Load() > uint32(d.options.MaxTemporaryErrors) {
 					errx = errx.ResetKind().SetKind(errkit.ErrKindNetworkPermanent)
 				}
