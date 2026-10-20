@@ -23,7 +23,15 @@ For more details and documentation refer [GoDoc](https://pkg.go.dev/github.com/p
 
 ### ZTLS Fallback
 
-fastdialer by default fallbacks to using zcrypto when there is an error in TLS handshake (insufficient security level etc ). This is done to support older TLS versions and ciphers. This can be disabled in fastdialer options or by using `DISABLE_ZTLS_FALLBACK=true` environment variable. when falling back to ztls, ChromeCiphers are used
+When the TLS handshake of `DialTLS` or `DialTLSWithConfig` fails, fastdialer retries it once with zcrypto (ztls), to reach servers that `crypto/tls` rejects, such as servers with old TLS versions or legacy ciphers. The retry uses `ztls.ChromeCiphers` and the default ztls curves instead of the cipher suites and curve preferences of the config. It retries only when:
+
+- the dial context isn't done, the handshake didn't time out, and the server's reply, if any, was TLS.
+- the TLS config allows versions older than TLS 1.3.
+- the TLS config uses nothing that zcrypto can't carry over: `InsecureSkipVerify` is `true`, and the config sets no `VerifyPeerCertificate` or `VerifyConnection` callback, no client certificate (`Certificates` or `GetClientCertificate`) and no Encrypted Client Hello settings. Otherwise the retry would verify the server differently, connect without the client certificate, or send the hidden server name in the clear.
+
+Plain dials, including dials through a proxy, impersonated dials and ztls dials never fall back. A dial that falls back returns a `*ztls.Conn` instead of a `*tls.Conn`, which `WithTLSData` doesn't record. If the retry fails too, the error includes both failures.
+
+To disable the fallback, set `DisableZtlsFallback` in the options or `DISABLE_ZTLS_FALLBACK=true` in the environment. Either one is enough.
 
 # Example
 

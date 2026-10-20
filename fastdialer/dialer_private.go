@@ -263,6 +263,18 @@ func (d *Dialer) dialIPS(ctx context.Context, l4 l4dialer, opts *dialOptions) (c
 			if err := TlsConn.HandshakeContext(ctx); err != nil {
 				handshakeDoneCancel()
 				_ = TlsConn.Close()
+				if d.canFallbackToZTLS(ctx, tlsconfigCopy, err) {
+					ztlsconfigCopy, convErr := AsZTLSConfig(tlsconfigCopy)
+					if convErr != nil {
+						return nil, errkit.Wrap(convErr, "could not convert tls config to ztls config")
+					}
+					ztlsconfigCopy.CipherSuites = ztls.ChromeCiphers
+					ztlsConn, ztlsErr := d.dialZTLS(ctx, l4, opts, hostPort, ztlsconfigCopy)
+					if ztlsErr != nil {
+						return nil, errkit.Join(errkit.Wrap(err, "could not tls handshake"), errkit.Wrap(ztlsErr, "ztls fallback failed"))
+					}
+					return ztlsConn, nil
+				}
 				return nil, errkit.Wrap(err, "could not tls handshake")
 			}
 			handshakeDoneCancel()
@@ -320,22 +332,7 @@ func (d *Dialer) dialIPS(ctx context.Context, l4 l4dialer, opts *dialOptions) (c
 		case !iputil.IsIP(opts.hostname):
 			ztlsconfigCopy.ServerName = opts.hostname
 		}
-		l4Conn, err := l4.DialContext(ctx, opts.network, hostPort)
-		if err != nil {
-			return nil, d.handleDialError(err, opts)
-		}
-		ztlsConn := ztls.Client(l4Conn, ztlsconfigCopy)
-		_, err = ctxutil.ExecFuncWithTwoReturns(ctx, func() (bool, error) {
-			handshakeDoneCancel := closeAfterTimeout(d.GetTimeout(), ztlsConn)
-			defer handshakeDoneCancel()
-
-			// run this in goroutine as select since this does not support context
-			return true, ztlsConn.Handshake()
-		})
-		if err != nil {
-			return nil, err
-		}
-		conn = ztlsConn
+		return d.dialZTLS(ctx, l4, opts, hostPort, ztlsconfigCopy)
 	} else {
 		if d.proxyDialer != nil {
 			dialer := *d.proxyDialer
@@ -366,45 +363,68 @@ func (d *Dialer) dialIPS(ctx context.Context, l4 l4dialer, opts *dialOptions) (c
 			err = d.handleDialError(err, opts)
 		}
 	}
-	// fallback to ztls  in case of handshake error with chrome ciphers
-	// ztls fallback can either be disabled by setting env variable DISABLE_ZTLS_FALLBACK=true or by setting DisableZtlsFallback=true in options
-	if err != nil && !errkit.Is(err, os.ErrDeadlineExceeded) && !(d.options.DisableZtlsFallback && disableZTLSFallback) { //nolint
-		var ztlsconfigCopy *ztls.Config
-		if opts.shouldUseZTLS {
-			ztlsconfigCopy = opts.ztlsconfig.Clone()
-		} else {
-			if opts.tlsconfig == nil {
-				opts.tlsconfig = &tls.Config{
-					Renegotiation:      tls.RenegotiateOnceAsClient,
-					MinVersion:         tls.VersionTLS10,
-					InsecureSkipVerify: true,
-				}
-			}
-			ztlsconfigCopy, err = AsZTLSConfig(opts.tlsconfig)
-			if err != nil {
-				return nil, errkit.Wrap(err, "could not convert tls config to ztls config")
-			}
-		}
-		ztlsconfigCopy.CipherSuites = ztls.ChromeCiphers
-		l4Conn, err := l4.DialContext(ctx, opts.network, hostPort)
-		if err != nil {
-			return nil, d.handleDialError(err, opts)
-		}
-		ztlsConn := ztls.Client(l4Conn, ztlsconfigCopy)
-
-		_, err = ctxutil.ExecFuncWithTwoReturns(ctx, func() (bool, error) {
-			handshakeDoneCancel := closeAfterTimeout(d.GetTimeout(), ztlsConn)
-			defer handshakeDoneCancel()
-
-			// run this in goroutine as select since this does not support context
-			return true, ztlsConn.Handshake()
-		})
-		if err != nil {
-			return nil, err
-		}
-		conn = ztlsConn
-	}
 	return
+}
+
+// dialZTLS dials hostPort through l4 and runs a ztls client handshake with
+// config. The connection is closed if the handshake fails.
+func (d *Dialer) dialZTLS(ctx context.Context, l4 l4dialer, opts *dialOptions, hostPort string, config *ztls.Config) (net.Conn, error) {
+	l4Conn, err := l4.DialContext(ctx, opts.network, hostPort)
+	if err != nil {
+		return nil, d.handleDialError(err, opts)
+	}
+	ztlsConn := ztls.Client(l4Conn, config)
+	_, err = ctxutil.ExecFuncWithTwoReturns(ctx, func() (bool, error) {
+		handshakeDoneCancel := closeAfterTimeout(d.GetTimeout(), ztlsConn)
+		defer handshakeDoneCancel()
+
+		// run this in goroutine as select since this does not support context
+		return true, ztlsConn.Handshake()
+	})
+	if err != nil {
+		_ = ztlsConn.Close()
+		return nil, err
+	}
+	return ztlsConn, nil
+}
+
+// canFallbackToZTLS reports whether a failed crypto/tls handshake (handshakeErr,
+// made with config) may be retried once with ztls and ztls.ChromeCiphers, to
+// reach servers that crypto/tls refuses to talk to (old versions, legacy
+// ciphers). The fallback can be disabled with Options.DisableZtlsFallback or
+// the DISABLE_ZTLS_FALLBACK environment variable.
+//
+// Only a handshake failure of a plain crypto/tls dial falls back; dial errors
+// (including proxy errors), impersonated and ztls dials do not. The fallback is
+// refused when a retry can't reach more servers: the context is done, the
+// handshake timed out, the server doesn't speak TLS, or config requires TLS
+// 1.3, which leaves no older version or cipher to retry with. It is also
+// refused when config doesn't carry over to ztls, see [carriesOverToZTLS].
+func (d *Dialer) canFallbackToZTLS(ctx context.Context, config *tls.Config, handshakeErr error) bool {
+	if d.options.DisableZtlsFallback && disableZTLSFallback {
+		return false
+	}
+	if ctx.Err() != nil || errkit.Is(handshakeErr, os.ErrDeadlineExceeded) {
+		return false
+	}
+	var recordErr tls.RecordHeaderError
+	if errkit.As(handshakeErr, &recordErr) || config.MinVersion >= tls.VersionTLS13 {
+		return false
+	}
+	return carriesOverToZTLS(config)
+}
+
+// carriesOverToZTLS reports whether a ztls retry with AsZTLSConfig(config)
+// keeps the server checks, client certificate and ECH settings of config.
+// AsZTLSConfig can't carry the RootCAs, the verification callbacks, the client
+// certificates or the ECH settings, so the retry would verify the server
+// differently, connect without the client certificate, or send the hidden
+// server name in the clear.
+func carriesOverToZTLS(config *tls.Config) bool {
+	return config.InsecureSkipVerify &&
+		config.VerifyPeerCertificate == nil && config.VerifyConnection == nil &&
+		len(config.Certificates) == 0 && config.GetClientCertificate == nil &&
+		config.EncryptedClientHelloConfigList == nil && config.EncryptedClientHelloRejectionVerify == nil
 }
 
 // setALPN makes conn advertise protos as its ALPN protocols.
