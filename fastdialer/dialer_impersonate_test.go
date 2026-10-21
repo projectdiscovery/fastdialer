@@ -464,3 +464,62 @@ func TestRandomClientHelloPairsHybridKeyShare(t *testing.T) {
 		t.Fatal("no randomized hello offered X25519MLKEM768")
 	}
 }
+
+// tlsVersion returns the negotiated version of a crypto/tls or utls conn.
+func tlsVersion(conn net.Conn) uint16 {
+	switch conn := conn.(type) {
+	case *tls.Conn:
+		return conn.ConnectionState().Version
+	case *utls.UConn:
+		return conn.ConnectionState().Version
+	}
+	return 0
+}
+
+// Impersonated dials must not negotiate a version outside MinVersion and
+// MaxVersion, as DialTLSWithConfig doesn't (#612).
+func TestDialTLSWithConfigImpersonateHonorsVersions(t *testing.T) {
+	d, err := NewDialer(DefaultOptions)
+	if err != nil {
+		t.Fatalf("new dialer: %v", err)
+	}
+	defer d.Close()
+	dials := tlsDials(t, d)
+
+	tests := []struct {
+		name        string
+		serverMax   uint16
+		minVersion  uint16
+		maxVersion  uint16
+		mustConnect bool
+	}{
+		{"MinVersion above the server", tls.VersionTLS12, tls.VersionTLS13, 0, false},
+		{"MaxVersion below the server", tls.VersionTLS13, 0, tls.VersionTLS12, false},
+		{"server within the range", tls.VersionTLS13, tls.VersionTLS12, tls.VersionTLS13, true},
+	}
+	for _, tc := range tests {
+		addr := newTLSServer(t, &tls.Config{CurvePreferences: impersonationCurves, MaxVersion: tc.serverMax}).Listener.Addr().String()
+		for _, tt := range dials {
+			t.Run(tc.name+"/"+tt.name, func(t *testing.T) {
+				cfg := &tls.Config{InsecureSkipVerify: true, MinVersion: tc.minVersion, MaxVersion: tc.maxVersion}
+				conn, err := tt.dial(addr, cfg)
+				if err != nil {
+					if tc.mustConnect {
+						t.Fatalf("dial: %v", err)
+					}
+					// crypto/tls doesn't offer the versions that the config
+					// excludes, so only impersonated dials need the check
+					if tt.name != "none" && !strings.Contains(err.Error(), "outside MinVersion and MaxVersion") {
+						t.Fatalf("dial error = %v, want the version check to fail it", err)
+					}
+					return
+				}
+				defer func() { _ = conn.Close() }()
+				v := tlsVersion(conn)
+				if v < tc.minVersion || (tc.maxVersion != 0 && v > tc.maxVersion) {
+					t.Fatalf("negotiated %s, outside MinVersion %s and MaxVersion %s", tls.VersionName(v), tls.VersionName(tc.minVersion), tls.VersionName(tc.maxVersion))
+				}
+			})
+		}
+	}
+}

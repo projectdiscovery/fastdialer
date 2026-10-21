@@ -4,6 +4,7 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"errors"
+	"fmt"
 	"slices"
 	"time"
 
@@ -48,6 +49,9 @@ func asUTLSConfig(cfg *tls.Config) *utls.Config {
 		if !cfg.InsecureSkipVerify {
 			ucfg.VerifyConnection = verifyResumedChains(cfg, ucfg.VerifyConnection)
 		}
+	}
+	if cfg.MinVersion != 0 || cfg.MaxVersion != 0 {
+		ucfg.VerifyConnection = verifyVersion(cfg.MinVersion, cfg.MaxVersion, ucfg.VerifyConnection)
 	}
 	if getCert := cfg.GetClientCertificate; getCert != nil {
 		ucfg.GetClientCertificate = func(cri *utls.CertificateRequestInfo) (*utls.Certificate, error) {
@@ -114,6 +118,22 @@ func asUTLSConnectionStateFunc(f func(tls.ConnectionState) error) func(utls.Conn
 			TLSUnique:                   cs.TLSUnique,
 			ECHAccepted:                 cs.ECHAccepted,
 		})
+	}
+}
+
+// verifyVersion fails a connection whose version is below minVersion or above
+// maxVersion, where zero leaves that end open. utls replaces MinVersion and
+// MaxVersion with the versions of the ClientHello spec, so it doesn't apply
+// those of the config.
+func verifyVersion(minVersion, maxVersion uint16, next func(utls.ConnectionState) error) func(utls.ConnectionState) error {
+	return func(cs utls.ConnectionState) error {
+		if cs.Version < minVersion || (maxVersion != 0 && cs.Version > maxVersion) {
+			return fmt.Errorf("tls: server selected %s, outside MinVersion and MaxVersion", tls.VersionName(cs.Version))
+		}
+		if next == nil {
+			return nil
+		}
+		return next(cs)
 	}
 }
 
