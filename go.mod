@@ -14,7 +14,7 @@ require (
 	github.com/projectdiscovery/utils v0.11.10-0.20261013234757-73f5497aaf2e
 	github.com/refraction-networking/utls v1.8.2
 	github.com/stretchr/testify v1.12.1
-	github.com/zmap/zcrypto v0.0.0-20260906180147-3ed30b1e9340
+	github.com/zmap/zcrypto v0.0.0-20261015050653-aa1de3126e87
 	golang.org/x/exp v0.0.0-20250106191152-7588d65b2ba8
 	golang.org/x/net v0.58.0
 	golang.org/x/sync v0.22.0
@@ -46,7 +46,7 @@ require (
 	github.com/tidwall/pretty v1.2.1 // indirect
 	github.com/tidwall/rtred v0.1.2 // indirect
 	github.com/tidwall/tinyqueue v0.1.1 // indirect
-	github.com/weppos/publicsuffix-go v0.50.4-0.20260821095816-b0fdb5c2d345 // indirect
+	github.com/weppos/publicsuffix-go v0.50.4-0.20260918082853-3c3d7dc4a0cb // indirect
 	go.etcd.io/bbolt v1.3.7 // indirect
 	go.uber.org/multierr v1.11.0 // indirect
 	go.yaml.in/yaml/v3 v3.0.5 // indirect
