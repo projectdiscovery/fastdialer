@@ -33,6 +33,15 @@ Plain dials, including dials through a proxy, impersonated dials and ztls dials 
 
 To disable the fallback, set `DisableZtlsFallback` in the options or `DISABLE_ZTLS_FALLBACK=true` in the environment. Either one is enough.
 
+### Pinning a Host to an IP
+
+`WithResolveOverride` makes dials to one host connect to the given IP instead of resolving it, like `curl --resolve`. The hostname is still sent as SNI, and other hosts dialed with the same context, such as redirect targets or a proxy, are resolved as usual.
+
+```go
+ctx := fastdialer.WithResolveOverride(context.Background(), "example.com", "192.0.2.10")
+conn, err := dialer.DialTLS(ctx, "tcp", "example.com:443")
+```
+
 # Example
 
 An Example showing usage of fastdialer as a library is specified [here](./example/main.go)
