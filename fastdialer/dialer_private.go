@@ -115,11 +115,66 @@ type dialOptions struct {
 	ips      []string
 	port     string
 	hostname string
+	fixedIP  string
 }
 
-// connHash returns a hash of the connection
+// connHash returns a hash of the connection. The pinned ip is part of it, so
+// dials of one address pinned to different ips never share a cached dialer.
 func (d *dialOptions) connHash() string {
+	if d.fixedIP != "" {
+		return fmt.Sprintf("%s-%s-%s", d.network, d.address, d.fixedIP)
+	}
 	return fmt.Sprintf("%s-%s", d.network, d.address)
+}
+
+// parseAddress splits the address into hostname and port and picks the ip the
+// dial is pinned to, if any.
+func (d *dialOptions) parseAddress(ctx context.Context) error {
+	var hostname, port, fixedIP string
+	if strings.HasPrefix(d.address, "[") {
+		closeBracketIndex := strings.Index(d.address, "]")
+		if closeBracketIndex == -1 {
+			return MalformedIP6Error
+		}
+		hostname = d.address[1:closeBracketIndex]
+		if len(d.address) < closeBracketIndex+2 {
+			return NoPortSpecifiedError
+		}
+		port = d.address[closeBracketIndex+2:]
+	} else {
+		addressParts := strings.SplitN(d.address, ":", 3)
+		if len(addressParts) < 2 {
+			// no port => error
+			return NoPortSpecifiedError
+		}
+		// ip|host:port
+		hostname = addressParts[0]
+		port = addressParts[1]
+		// ip|host:port:ip => curl --resolve ip:port:ip
+		var addressIP string
+		if len(addressParts) > 2 {
+			addressIP = addressParts[2]
+		}
+		fixedIP = pinnedIP(ctx, hostname, addressIP)
+	}
+
+	d.hostname = asAscii(hostname)
+	d.port = port
+	d.fixedIP = fixedIP
+	return nil
+}
+
+// pinnedIP returns the ip a dial to hostname is pinned to, in order of
+// precedence: the IP context option, the ip of a host:port:ip address and a
+// resolve override.
+func pinnedIP(ctx context.Context, hostname, addressIP string) string {
+	if ctxIP := ctx.Value(IP); ctxIP != nil {
+		return fmt.Sprint(ctxIP)
+	}
+	if addressIP != "" {
+		return addressIP
+	}
+	return resolveOverride(ctx, hostname)
 }
 
 // logAddress returns the address to be logged in case of error
@@ -136,49 +191,19 @@ func (d *Dialer) dial(ctx context.Context, opts *dialOptions) (conn net.Conn, er
 	ctx, cancel := context.WithTimeoutCause(ctx, d.GetTimeout(), ErrDialTimeout)
 	defer cancel()
 
-	var hostname, port, fixedIP string
+	// the pinned ip is read before the cache lookup, as it is part of the key
+	if err := opts.parseAddress(ctx); err != nil {
+		return nil, err
+	}
+	hostname, port := opts.hostname, opts.port
+
 	var IPS []string
 	// check if this is present in cache
 	dw, err := d.dialCache.GetIFPresent(opts.connHash())
 	if err != nil || dw == nil {
-		if strings.HasPrefix(opts.address, "[") {
-			closeBracketIndex := strings.Index(opts.address, "]")
-			if closeBracketIndex == -1 {
-				return nil, MalformedIP6Error
-			}
-			hostname = opts.address[:closeBracketIndex+1]
-			if len(opts.address) < closeBracketIndex+2 {
-				return nil, NoPortSpecifiedError
-			}
-			port = opts.address[closeBracketIndex+2:]
-		} else {
-			addressParts := strings.SplitN(opts.address, ":", 3)
-			numberOfParts := len(addressParts)
-
-			if numberOfParts >= 2 {
-				// ip|host:port
-				hostname = addressParts[0]
-				port = addressParts[1]
-				// ip|host:port:ip => curl --resolve ip:port:ip
-				if numberOfParts > 2 {
-					fixedIP = addressParts[2]
-				}
-				// check if the ip is within the context
-				if ctxIP := ctx.Value(IP); ctxIP != nil {
-					fixedIP = fmt.Sprint(ctxIP)
-				}
-			} else {
-				// no port => error
-				return nil, NoPortSpecifiedError
-			}
-		}
-
-		// check if data is in cache
-		hostname = asAscii(hostname)
-
 		// use fixed ip as first
-		if fixedIP != "" {
-			IPS = append(IPS, fixedIP)
+		if opts.fixedIP != "" {
+			IPS = append(IPS, opts.fixedIP)
 		} else {
 			cacheData, err, _ := d.resolutionsGroup.Do(hostname, func() (interface{}, error) {
 				return d.GetDNSData(hostname)
@@ -234,8 +259,6 @@ func (d *Dialer) dial(ctx context.Context, opts *dialOptions) (conn net.Conn, er
 		// update allowed ips
 		IPS = filteredIPs
 		opts.ips = IPS
-		opts.port = port
-		opts.hostname = hostname
 	}
 
 	var finalDialer l4dialer = d.dialer
@@ -265,9 +288,6 @@ func (d *Dialer) dial(ctx context.Context, opts *dialOptions) (conn net.Conn, er
 		ip, port := dw.Address()
 		opts.ips = []string{ip}
 		opts.port = port
-		// also set hostname by parsing it from address
-		hostname, _, _ = net.SplitHostPort(opts.address)
-		opts.hostname = hostname
 	}
 
 	conn, err = d.dialIPS(ctx, finalDialer, opts)
