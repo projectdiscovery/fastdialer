@@ -10,6 +10,7 @@ import (
 	"encoding/pem"
 	"math/big"
 	"net"
+	"reflect"
 	"sync"
 	"testing"
 	"time"
@@ -260,6 +261,103 @@ func TestParseWithJa3_TLSHandshake(t *testing.T) {
 	}
 }
 
+func TestParseWithJa3_TLS13Handshake(t *testing.T) {
+	ln, caPool, cleanup := newLocalTLSServer(t)
+	defer cleanup()
+
+	// TLS 1.3 fingerprints: legacy_version is 771 (TLS 1.2) but they carry
+	// supported_versions (43) and key_share (51). Current browsers list
+	// X25519MLKEM768 (4588) first, sometimes after a GREASE value.
+	const prefix = "771,4865-4866-4867-49195-49199-49196-49200,0-23-65281-10-11-35-16-5-13-51-45-43,"
+	tests := map[string]string{
+		"X25519":                     prefix + "29-23-24,0",
+		"X25519MLKEM768":             prefix + "4588-29-23-24,0",
+		"GREASE then X25519MLKEM768": prefix + "2570-4588-29-23-24,0",
+	}
+	for name, ja3 := range tests {
+		t.Run(name, func(t *testing.T) {
+			spec, err := ParseWithJa3(ja3)
+			require.NoError(t, err)
+
+			tcpConn, err := net.DialTimeout("tcp", ln.Addr().String(), 5*time.Second)
+			require.NoError(t, err)
+			defer func() { _ = tcpConn.Close() }()
+
+			uConn := utls.UClient(tcpConn, &utls.Config{
+				ServerName: "localhost",
+				RootCAs:    caPool,
+			}, utls.HelloCustom)
+			require.NoError(t, uConn.ApplyPreset(spec), "ApplyPreset should not fail")
+
+			require.NoError(t, uConn.Handshake(), "TLS 1.3 handshake should succeed")
+			defer func() { _ = uConn.Close() }()
+
+			assert.Equal(t, uint16(tls.VersionTLS13), uConn.ConnectionState().Version)
+		})
+	}
+}
+
+func TestParseWithJa3_KeyShareAndVersions(t *testing.T) {
+	keyShareOf := func(t *testing.T, spec *utls.ClientHelloSpec) *utls.KeyShareExtension {
+		t.Helper()
+		for _, e := range spec.Extensions {
+			if ks, ok := e.(*utls.KeyShareExtension); ok {
+				return ks
+			}
+		}
+		t.Fatal("no key share extension")
+		return nil
+	}
+
+	t.Run("first usable curve, skipping unknown ones", func(t *testing.T) {
+		spec, err := ParseWithJa3("771,4865,10-51-43,999-23-29,0")
+		require.NoError(t, err)
+		assert.Equal(t, []utls.KeyShare{{Group: utls.CurveP256}}, keyShareOf(t, spec).KeyShares)
+	})
+
+	t.Run("X25519MLKEM768 comes with an X25519 key share", func(t *testing.T) {
+		spec, err := ParseWithJa3("771,4865,10-51-43,4588-29-23,0")
+		require.NoError(t, err)
+		assert.Equal(t, []utls.KeyShare{{Group: utls.X25519MLKEM768}, {Group: utls.X25519}}, keyShareOf(t, spec).KeyShares)
+	})
+
+	t.Run("X25519MLKEM768 without X25519 is skipped", func(t *testing.T) {
+		spec, err := ParseWithJa3("771,4865,10-51-43,4588-23,0")
+		require.NoError(t, err)
+		assert.Equal(t, []utls.KeyShare{{Group: utls.CurveP256}}, keyShareOf(t, spec).KeyShares)
+	})
+
+	t.Run("no usable curve leaves key shares empty", func(t *testing.T) {
+		spec, err := ParseWithJa3("771,4865,10-51-43,999,0")
+		require.NoError(t, err)
+		assert.Empty(t, keyShareOf(t, spec).KeyShares)
+	})
+
+	t.Run("key share is not shared between specs", func(t *testing.T) {
+		a, err := ParseWithJa3("771,4865,10-51-43,29,0")
+		require.NoError(t, err)
+		b, err := ParseWithJa3("771,4865,10-51-43,23,0")
+		require.NoError(t, err)
+		assert.NotSame(t, keyShareOf(t, a), keyShareOf(t, b))
+		assert.Equal(t, utls.X25519, keyShareOf(t, a).KeyShares[0].Group)
+		assert.Equal(t, utls.CurveP256, keyShareOf(t, b).KeyShares[0].Group)
+	})
+
+	t.Run("versions are left to supported_versions when present", func(t *testing.T) {
+		spec, err := ParseWithJa3("771,4865,10-51-43,29,0")
+		require.NoError(t, err)
+		assert.Zero(t, spec.TLSVersMin)
+		assert.Zero(t, spec.TLSVersMax)
+	})
+
+	t.Run("versions come from JA3 without supported_versions", func(t *testing.T) {
+		spec, err := ParseWithJa3("771,49195,0-10-11,29,0")
+		require.NoError(t, err)
+		assert.Equal(t, uint16(771), spec.TLSVersMin)
+		assert.Equal(t, uint16(771), spec.TLSVersMax)
+	})
+}
+
 func TestParseWithJa3_HandshakeFailsWithoutCurves(t *testing.T) {
 	ln, caPool, cleanup := newLocalTLSServer(t)
 	defer cleanup()
@@ -411,5 +509,26 @@ func TestParseWithJa3_ConcurrentSafety(t *testing.T) {
 	}
 	for i := 0; i < 10; i++ {
 		<-done
+	}
+}
+
+// Specs must not share extensions, since utls writes to the extensions of the
+// spec it applies to a connection (#609).
+func TestParseWithJa3_SpecsShareNoExtensions(t *testing.T) {
+	const ja3 = "771,4865-49195,0-5-10-11-13-16-18-21-23-28-35-43-44-45-51-13172-65281,29-23-24,0"
+
+	a, err := ParseWithJa3(ja3)
+	require.NoError(t, err)
+	b, err := ParseWithJa3(ja3)
+	require.NoError(t, err)
+
+	require.Len(t, b.Extensions, len(a.Extensions))
+	for i := range a.Extensions {
+		// extensions without fields hold no state, and Go may give them all
+		// the same address
+		if reflect.TypeOf(a.Extensions[i]).Elem().Size() == 0 {
+			continue
+		}
+		assert.NotSame(t, a.Extensions[i], b.Extensions[i], "extension %d (%T) is shared", i, a.Extensions[i])
 	}
 }

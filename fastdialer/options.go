@@ -1,6 +1,7 @@
 package fastdialer
 
 import (
+	"context"
 	"log"
 	"net"
 	"time"
@@ -91,6 +92,11 @@ type Options struct {
 	//
 	// Default is [DefaultNdots].
 	Ndots int
+
+	// OnDialResult is called after each connection attempt with the caller's
+	// context and the error, nil on success. Targets that fail before a
+	// connection is attempted (resolution, policy) are not reported.
+	OnDialResult func(ctx context.Context, hostname, port string, err error)
 }
 
 // DefaultOptions of the cache

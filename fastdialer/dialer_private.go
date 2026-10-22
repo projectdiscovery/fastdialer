@@ -10,6 +10,8 @@ import (
 	"log/slog"
 	"net"
 	"os"
+	"reflect"
+	"slices"
 	"strconv"
 	"strings"
 	"sync/atomic"
@@ -264,36 +266,39 @@ func (d *Dialer) dial(ctx context.Context, opts *dialOptions) (conn net.Conn, er
 	}
 
 	conn, err = d.dialIPS(ctx, finalDialer, opts)
-	if err == nil {
-		if conn == nil {
-			err = CouldNotConnectError
-			return
+	if err == nil && conn == nil {
+		err = CouldNotConnectError
+	} else if err == nil && conn.RemoteAddr() == nil {
+		err = errkit.New("remote address is nil")
+		conn = nil
+	}
+	if d.options.OnDialResult != nil {
+		d.options.OnDialResult(ctx, hostname, opts.port, err)
+	}
+	if err != nil {
+		return
+	}
+	ip, _, _ := net.SplitHostPort(conn.RemoteAddr().String())
+	if d.options.WithDialerHistory && d.dialerHistory != nil {
+		setErr := d.dialerHistory.Set(hostname, []byte(ip))
+		if setErr != nil {
+			return nil, setErr
 		}
-		if conn.RemoteAddr() == nil {
-			return nil, errkit.New("remote address is nil")
-		}
-		ip, _, _ := net.SplitHostPort(conn.RemoteAddr().String())
-		if d.options.WithDialerHistory && d.dialerHistory != nil {
-			setErr := d.dialerHistory.Set(hostname, []byte(ip))
+	}
+	if d.options.OnDialCallback != nil {
+		d.options.OnDialCallback(hostname, ip)
+	}
+	if d.options.WithTLSData && opts.shouldUseTLS {
+		if connTLS, ok := conn.(*tls.Conn); ok {
+			var data bytes.Buffer
+			connState := connTLS.ConnectionState()
+			err := json.NewEncoder(&data).Encode(cryptoutil.TLSGrab(&connState))
+			if err != nil {
+				return nil, err
+			}
+			setErr := d.dialerTLSData.Set(hostname, data.Bytes())
 			if setErr != nil {
 				return nil, setErr
-			}
-		}
-		if d.options.OnDialCallback != nil {
-			d.options.OnDialCallback(hostname, ip)
-		}
-		if d.options.WithTLSData && opts.shouldUseTLS {
-			if connTLS, ok := conn.(*tls.Conn); ok {
-				var data bytes.Buffer
-				connState := connTLS.ConnectionState()
-				err := json.NewEncoder(&data).Encode(cryptoutil.TLSGrab(&connState))
-				if err != nil {
-					return nil, err
-				}
-				setErr := d.dialerTLSData.Set(hostname, data.Bytes())
-				if setErr != nil {
-					return nil, setErr
-				}
 			}
 		}
 	}
@@ -326,6 +331,18 @@ func (d *Dialer) dialIPS(ctx context.Context, l4 l4dialer, opts *dialOptions) (c
 			if err := TlsConn.HandshakeContext(ctx); err != nil {
 				handshakeDoneCancel()
 				_ = TlsConn.Close()
+				if d.canFallbackToZTLS(ctx, tlsconfigCopy, err) {
+					ztlsconfigCopy, convErr := AsZTLSConfig(tlsconfigCopy)
+					if convErr != nil {
+						return nil, errkit.Wrap(convErr, "could not convert tls config to ztls config")
+					}
+					ztlsconfigCopy.CipherSuites = ztls.ChromeCiphers
+					ztlsConn, ztlsErr := d.dialZTLS(ctx, l4, opts, hostPort, ztlsconfigCopy)
+					if ztlsErr != nil {
+						return nil, errkit.Join(errkit.Wrap(err, "could not tls handshake"), errkit.Wrap(ztlsErr, "ztls fallback failed"))
+					}
+					return ztlsConn, nil
+				}
 				return nil, errkit.Wrap(err, "could not tls handshake")
 			}
 			handshakeDoneCancel()
@@ -335,41 +352,11 @@ func (d *Dialer) dialIPS(ctx context.Context, l4 l4dialer, opts *dialOptions) (c
 			if err != nil {
 				return nil, d.handleDialError(err, opts)
 			}
-			// clone existing tls config
-			uTLSConfig := &utls.Config{
-				InsecureSkipVerify: tlsconfigCopy.InsecureSkipVerify,
-				ServerName:         tlsconfigCopy.ServerName,
-				MinVersion:         tlsconfigCopy.MinVersion,
-				MaxVersion:         tlsconfigCopy.MaxVersion,
-				CipherSuites:       tlsconfigCopy.CipherSuites,
-				NextProtos:         tlsconfigCopy.NextProtos,
-			}
-			var uTLSConn *utls.UConn
-			switch opts.impersonateStrategy {
-			case impersonate.Random:
-				uTLSConn = utls.UClient(nativeConn, uTLSConfig, utls.HelloRandomized)
-			case impersonate.Custom:
-				uTLSConn = utls.UClient(nativeConn, uTLSConfig, utls.HelloCustom)
-				clientHelloSpec := utls.ClientHelloSpec(ptrutil.Safe(opts.impersonateIdentity))
-				if err := uTLSConn.ApplyPreset(&clientHelloSpec); err != nil {
-					return nil, err
-				}
-			case impersonate.Chrome:
-				uTLSConn = utls.UClient(nativeConn, uTLSConfig, utls.HelloChrome_106_Shuffle)
-			}
-			if len(tlsconfigCopy.NextProtos) > 0 {
-				if err := setALPN(uTLSConn, tlsconfigCopy.NextProtos); err != nil {
-					_ = uTLSConn.Close()
-					return nil, err
-				}
-			}
-			handshakeDoneCancel := closeAfterTimeout(d.GetTimeout(), uTLSConn)
-			if err := uTLSConn.Handshake(); err != nil {
-				handshakeDoneCancel()
-				_ = uTLSConn.Close()
+			uTLSConn, err := d.handshakeImpersonated(nativeConn, tlsconfigCopy, opts)
+			if err != nil {
+				_ = nativeConn.Close()
 				return nil, err
 			}
-			handshakeDoneCancel()
 			conn = uTLSConn
 		}
 	} else if opts.shouldUseZTLS {
@@ -383,73 +370,188 @@ func (d *Dialer) dialIPS(ctx context.Context, l4 l4dialer, opts *dialOptions) (c
 		case !iputil.IsIP(opts.hostname):
 			ztlsconfigCopy.ServerName = opts.hostname
 		}
-		l4Conn, err := l4.DialContext(ctx, opts.network, hostPort)
-		if err != nil {
-			return nil, d.handleDialError(err, opts)
-		}
-		ztlsConn := ztls.Client(l4Conn, ztlsconfigCopy)
-		_, err = ctxutil.ExecFuncWithTwoReturns(ctx, func() (bool, error) {
-			handshakeDoneCancel := closeAfterTimeout(d.GetTimeout(), ztlsConn)
-			defer handshakeDoneCancel()
-
-			// run this in goroutine as select since this does not support context
-			return true, ztlsConn.Handshake()
-		})
-		if err != nil {
-			return nil, err
-		}
-		conn = ztlsConn
+		return d.dialZTLS(ctx, l4, opts, hostPort, ztlsconfigCopy)
 	} else {
 		conn, err = l4.DialContext(ctx, opts.network, hostPort)
 		err = d.handleDialError(err, opts)
 	}
-	// fallback to ztls  in case of handshake error with chrome ciphers
-	// ztls fallback can either be disabled by setting env variable DISABLE_ZTLS_FALLBACK=true or by setting DisableZtlsFallback=true in options
-	if err != nil && !errkit.Is(err, os.ErrDeadlineExceeded) && !(d.options.DisableZtlsFallback && disableZTLSFallback) { //nolint
-		var ztlsconfigCopy *ztls.Config
-		if opts.shouldUseZTLS {
-			ztlsconfigCopy = opts.ztlsconfig.Clone()
-		} else {
-			if opts.tlsconfig == nil {
-				opts.tlsconfig = &tls.Config{
-					Renegotiation:      tls.RenegotiateOnceAsClient,
-					MinVersion:         tls.VersionTLS10,
-					InsecureSkipVerify: true,
-				}
-			}
-			ztlsconfigCopy, err = AsZTLSConfig(opts.tlsconfig)
-			if err != nil {
-				return nil, errkit.Wrap(err, "could not convert tls config to ztls config")
-			}
-		}
-		ztlsconfigCopy.CipherSuites = ztls.ChromeCiphers
-		l4Conn, err := l4.DialContext(ctx, opts.network, hostPort)
-		if err != nil {
-			return nil, d.handleDialError(err, opts)
-		}
-		ztlsConn := ztls.Client(l4Conn, ztlsconfigCopy)
+	return
+}
 
-		_, err = ctxutil.ExecFuncWithTwoReturns(ctx, func() (bool, error) {
-			handshakeDoneCancel := closeAfterTimeout(d.GetTimeout(), ztlsConn)
-			defer handshakeDoneCancel()
+// dialZTLS dials hostPort through l4 and runs a ztls client handshake with
+// config. The connection is closed if the handshake fails.
+func (d *Dialer) dialZTLS(ctx context.Context, l4 l4dialer, opts *dialOptions, hostPort string, config *ztls.Config) (net.Conn, error) {
+	l4Conn, err := l4.DialContext(ctx, opts.network, hostPort)
+	if err != nil {
+		return nil, d.handleDialError(err, opts)
+	}
+	ztlsConn := ztls.Client(l4Conn, config)
+	_, err = ctxutil.ExecFuncWithTwoReturns(ctx, func() (bool, error) {
+		handshakeDoneCancel := closeAfterTimeout(d.GetTimeout(), ztlsConn)
+		defer handshakeDoneCancel()
 
-			// run this in goroutine as select since this does not support context
-			return true, ztlsConn.Handshake()
-		})
-		if err != nil {
+		// run this in goroutine as select since this does not support context
+		return true, ztlsConn.Handshake()
+	})
+	if err != nil {
+		_ = ztlsConn.Close()
+		return nil, err
+	}
+	return ztlsConn, nil
+}
+
+// handshakeImpersonated runs a utls client handshake over conn with config and
+// the ClientHello of opts.impersonateStrategy. When it fails, closing conn is
+// left to the caller that dialed it, though a handshake that times out has
+// closed it already.
+func (d *Dialer) handshakeImpersonated(conn net.Conn, config *tls.Config, opts *dialOptions) (*utls.UConn, error) {
+	uTLSConfig := asUTLSConfig(config)
+	var uTLSConn *utls.UConn
+	switch opts.impersonateStrategy {
+	case impersonate.Random:
+		uTLSConn = utls.UClient(conn, uTLSConfig, randomClientHelloID())
+	case impersonate.Custom:
+		spec, ownSession := newClientHelloSpec(opts.impersonateIdentity)
+		// utls panics when it loads a cached session into an
+		// extension that already holds one
+		if ownSession {
+			uTLSConfig.ClientSessionCache = nil
+		}
+		uTLSConn = utls.UClient(conn, uTLSConfig, utls.HelloCustom)
+		if err := uTLSConn.ApplyPreset(spec); err != nil {
 			return nil, err
 		}
-		conn = ztlsConn
+	case impersonate.Chrome:
+		uTLSConn = utls.UClient(conn, uTLSConfig, utls.HelloChrome_106_Shuffle)
 	}
-	return
+	if len(config.NextProtos) > 0 {
+		if err := setALPN(uTLSConn, config.NextProtos); err != nil {
+			return nil, err
+		}
+	}
+	handshakeDoneCancel := closeAfterTimeout(d.GetTimeout(), uTLSConn)
+	defer handshakeDoneCancel()
+	if err := uTLSConn.Handshake(); err != nil {
+		return nil, err
+	}
+	return uTLSConn, nil
+}
+
+// canFallbackToZTLS reports whether a failed crypto/tls handshake (handshakeErr,
+// made with config) may be retried once with ztls and ztls.ChromeCiphers, to
+// reach servers that crypto/tls refuses to talk to (old versions, legacy
+// ciphers). The fallback can be disabled with Options.DisableZtlsFallback or
+// the DISABLE_ZTLS_FALLBACK environment variable.
+//
+// Only a handshake failure of a plain crypto/tls dial falls back; dial errors
+// (including proxy errors), impersonated and ztls dials do not. The fallback is
+// refused when a retry can't reach more servers: the context is done, the
+// handshake timed out, the server doesn't speak TLS, or config requires TLS
+// 1.3, which leaves no older version or cipher to retry with. It is also
+// refused when config doesn't carry over to ztls, see [carriesOverToZTLS].
+func (d *Dialer) canFallbackToZTLS(ctx context.Context, config *tls.Config, handshakeErr error) bool {
+	if d.options.DisableZtlsFallback || disableZTLSFallback {
+		return false
+	}
+	if ctx.Err() != nil || errkit.Is(handshakeErr, os.ErrDeadlineExceeded) {
+		return false
+	}
+	var recordErr tls.RecordHeaderError
+	if errkit.As(handshakeErr, &recordErr) || config.MinVersion >= tls.VersionTLS13 {
+		return false
+	}
+	return carriesOverToZTLS(config)
+}
+
+// carriesOverToZTLS reports whether a ztls retry with AsZTLSConfig(config)
+// keeps the server checks, client certificate and ECH settings of config.
+// AsZTLSConfig copies Certificates. It can't carry RootCAs, the verification
+// callbacks, GetClientCertificate, or the ECH settings, so the retry would
+// verify the server differently, omit a certificate chosen by callback, or
+// send the hidden server name in the clear.
+func carriesOverToZTLS(config *tls.Config) bool {
+	return config.InsecureSkipVerify &&
+		config.VerifyPeerCertificate == nil && config.VerifyConnection == nil &&
+		config.GetClientCertificate == nil &&
+		config.EncryptedClientHelloConfigList == nil && config.EncryptedClientHelloRejectionVerify == nil
+}
+
+// randomClientHelloID is HelloRandomized with the hybrid group tied to its key
+// share. utls cannot answer a HelloRetryRequest for X25519MLKEM768, so a hello
+// that advertises that group without a share fails when the server asks for it.
+func randomClientHelloID() utls.ClientHelloID {
+	weights := utls.DefaultWeights
+	weights.CurveIDs_Append_X25519 = 1
+	weights.KeyShare_Append_RandomGroups = 1
+	id := utls.HelloRandomized
+	id.Weights = &weights
+	return id
+}
+
+// newClientHelloSpec returns the spec of identity for one connection, and
+// whether the identity sets its own session.
+//
+// utls stores the state of a connection in the extensions of its spec: the
+// server name, GREASE values and key shares it fills in, the padding it
+// computes, and the session it resumes. Callers share an identity across dials
+// and goroutines, so the spec gets a copy of each extension, and a new
+// extension for the session that utls resumes. Otherwise concurrent dials
+// would race on the identity, and a later dial would keep the server name of
+// an earlier one, reuse key shares without their private keys, and fail or
+// panic on a stored session.
+//
+// The spec keeps a server name or session ticket that the identity sets
+// itself, and session extensions of other types, such as the
+// FakePreSharedKeyExtension of ja3.ParseWithRaw. utls can't put a cached
+// session in those.
+func newClientHelloSpec(identity *impersonate.Identity) (spec *utls.ClientHelloSpec, ownSession bool) {
+	s := utls.ClientHelloSpec(ptrutil.Safe(identity))
+	s.Extensions = slices.Clone(s.Extensions)
+	for i, ext := range s.Extensions {
+		switch ext := ext.(type) {
+		case *utls.SessionTicketExtension:
+			if !ext.Initialized {
+				s.Extensions[i] = &utls.SessionTicketExtension{}
+				continue
+			}
+			ownSession = true
+		case *utls.UtlsPreSharedKeyExtension:
+			s.Extensions[i] = &utls.UtlsPreSharedKeyExtension{}
+			continue
+		case utls.ISessionTicketExtension, utls.PreSharedKeyExtension:
+			ownSession = true
+		}
+		s.Extensions[i] = copyExtension(ext)
+	}
+	return &s, ownSession
+}
+
+// copyExtension returns a copy of ext that utls can fill in for one connection.
+// utls assigns to the fields of an extension, and in place to the elements of
+// some of its exported slices, such as the GREASE placeholders among the curves
+// and versions, so the copy gets its own struct and exported slices. Any type
+// is copied this way, since utls doesn't document which ones it writes to. An
+// extension that isn't a pointer to a struct is returned as is.
+func copyExtension(ext utls.TLSExtension) utls.TLSExtension {
+	v := reflect.ValueOf(ext)
+	if v.Kind() != reflect.Pointer || v.IsNil() || v.Elem().Kind() != reflect.Struct {
+		return ext
+	}
+	c := reflect.New(v.Elem().Type()).Elem()
+	c.Set(v.Elem())
+	for i := range c.NumField() {
+		if f := c.Field(i); f.Kind() == reflect.Slice && f.CanSet() && !f.IsNil() {
+			f.Set(reflect.AppendSlice(reflect.MakeSlice(f.Type(), 0, f.Len()), f))
+		}
+	}
+	return c.Addr().Interface().(utls.TLSExtension)
 }
 
 // setALPN makes conn advertise protos as its ALPN protocols.
 //
 // Parroted and custom ClientHello specs carry their own ALPN extension, which
-// overrides Config.NextProtos. The extension is replaced rather than modified
-// because specs share extensions across connections. A spec without ALPN
-// stays without it, keeping its extension set.
+// overrides Config.NextProtos, so setALPN replaces that extension. A spec
+// without ALPN stays without it, keeping its extension set.
 func setALPN(conn *utls.UConn, protos []string) error {
 	if err := conn.BuildHandshakeState(); err != nil {
 		return err
@@ -486,7 +588,7 @@ func (d *Dialer) handleDialError(err error, opts *dialOptions) error {
 				}
 				_ = d.dialTimeoutErrors.Set(opts.connHash(), count)
 
-				// update them to permament if they happened multiple times within 30s
+				// update them to permanent if they happened multiple times within 30s
 				if count.Load() > uint32(d.options.MaxTemporaryErrors) {
 					errx = errx.ResetKind().SetKind(errkit.ErrKindNetworkPermanent)
 				}
