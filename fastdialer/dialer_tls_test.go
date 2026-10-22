@@ -106,3 +106,51 @@ func TestDialZTLSWithConfigSendsCertificates(t *testing.T) {
 		})
 	}
 }
+
+// Options.TLSConfig and Options.ZTLSConfig replace the default configs of
+// DialTLS and DialZTLS, and leave the configs passed to WithConfig dials alone.
+func TestDialTLSUsesOptionsConfig(t *testing.T) {
+	srv := newTLSServer(t, &tls.Config{NextProtos: []string{"from-options", "from-caller"}})
+	addr := srv.Listener.Addr().String()
+
+	opts := DefaultOptions
+	opts.TLSConfig = &tls.Config{InsecureSkipVerify: true, NextProtos: []string{"from-options"}}
+	opts.ZTLSConfig = &ztls.Config{InsecureSkipVerify: true, NextProtos: []string{"from-options"}}
+	d, err := NewDialer(opts)
+	if err != nil {
+		t.Fatalf("new dialer: %v", err)
+	}
+	t.Cleanup(d.Close)
+
+	ctx := context.Background()
+	dials := map[string]func() (net.Conn, error){
+		"DialTLS":  func() (net.Conn, error) { return d.DialTLS(ctx, "tcp", addr) },
+		"DialZTLS": func() (net.Conn, error) { return d.DialZTLS(ctx, "tcp", addr) },
+		"DialTLSWithConfig": func() (net.Conn, error) {
+			return d.DialTLSWithConfig(ctx, "tcp", addr, &tls.Config{InsecureSkipVerify: true, NextProtos: []string{"from-caller"}})
+		},
+	}
+	want := map[string]string{"DialTLS": "from-options", "DialZTLS": "from-options", "DialTLSWithConfig": "from-caller"}
+	for name, dial := range dials {
+		t.Run(name, func(t *testing.T) {
+			conn, err := dial()
+			if err != nil {
+				t.Fatalf("dial: %v", err)
+			}
+			defer func() { _ = conn.Close() }()
+
+			var got string
+			switch c := conn.(type) {
+			case *tls.Conn:
+				got = c.ConnectionState().NegotiatedProtocol
+			case *ztls.Conn:
+				got = c.ConnectionState().NegotiatedProtocol
+			default:
+				t.Fatalf("unexpected conn type %T", conn)
+			}
+			if got != want[name] {
+				t.Fatalf("negotiated %q, want %q", got, want[name])
+			}
+		})
+	}
+}
