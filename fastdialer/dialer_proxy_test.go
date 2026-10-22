@@ -225,3 +225,90 @@ func TestProxyDialerTimeout(t *testing.T) {
 		t.Fatalf("expected error containing 'timeout after 50ms', got %v", err)
 	}
 }
+
+func TestProxyDialerZTLS(t *testing.T) {
+	srv := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	srv.TLS = &tls.Config{
+		MinVersion: tls.VersionTLS12,
+		MaxVersion: tls.VersionTLS12,
+	}
+	srv.Config.ErrorLog = log.New(io.Discard, "", 0)
+	srv.StartTLS()
+	defer srv.Close()
+
+	tracker := &trackingProxyDialer{underlying: &net.Dialer{}}
+	var pd proxy.Dialer = tracker
+
+	opts := DefaultOptions
+	opts.ProxyDialer = &pd
+
+	fd, err := NewDialer(opts)
+	if err != nil {
+		t.Fatalf("could not create dialer: %v", err)
+	}
+	defer fd.Close()
+
+	conn, err := fd.DialZTLS(context.Background(), "tcp", srv.Listener.Addr().String())
+	if err != nil {
+		t.Fatalf("dial ZTLS failed: %v", err)
+	}
+	_ = conn.Close()
+
+	tracker.mu.Lock()
+	defer tracker.mu.Unlock()
+	if len(tracker.dialedAddrs) == 0 {
+		t.Fatalf("expected proxy dialer to be invoked for ZTLS, but dialedAddrs was empty")
+	}
+}
+
+type closeTrackingConn struct {
+	net.Conn
+	closed chan struct{}
+}
+
+func (c *closeTrackingConn) Close() error {
+	close(c.closed)
+	return c.Conn.Close()
+}
+
+// slowProxyDialer returns a real conn only after delay, past the dial timeout.
+type slowProxyDialer struct {
+	delay time.Duration
+	conn  *closeTrackingConn
+}
+
+func (s *slowProxyDialer) Dial(network, addr string) (net.Conn, error) {
+	time.Sleep(s.delay)
+	return s.conn, nil
+}
+
+func TestProxyDialerTimeoutClosesLateConn(t *testing.T) {
+	client, server := net.Pipe()
+	defer func() { _ = server.Close() }()
+	slow := &slowProxyDialer{
+		delay: 200 * time.Millisecond,
+		conn:  &closeTrackingConn{Conn: client, closed: make(chan struct{})},
+	}
+	var pd proxy.Dialer = slow
+
+	opts := DefaultOptions
+	opts.ProxyDialer = &pd
+	opts.DialerTimeout = 50 * time.Millisecond
+
+	fd, err := NewDialer(opts)
+	if err != nil {
+		t.Fatalf("could not create dialer: %v", err)
+	}
+	defer fd.Close()
+
+	if _, err := fd.Dial(context.Background(), "tcp", "127.0.0.1:80"); err == nil {
+		t.Fatal("expected timeout error")
+	}
+	select {
+	case <-slow.conn.closed:
+	case <-time.After(2 * time.Second):
+		t.Fatal("conn returned by the proxy after the timeout was never closed")
+	}
+}

@@ -54,15 +54,24 @@ func (p *proxyL4Dialer) DialContext(ctx context.Context, network, address string
 		return cd.DialContext(ctx, network, address)
 	}
 
-	connectionCh := make(chan net.Conn, 1)
-	errCh := make(chan error, 1)
+	type dialResult struct {
+		conn net.Conn
+		err  error
+	}
+	// results is unbuffered so a conn that arrives after we gave up is seen by
+	// the dialing goroutine, which closes it instead of leaking it
+	results := make(chan dialResult)
+	abandoned := make(chan struct{})
+	defer close(abandoned)
 	go func() {
 		conn, err := p.dialer.Dial(network, address)
-		if err != nil {
-			errCh <- err
-			return
+		select {
+		case results <- dialResult{conn, err}:
+		case <-abandoned:
+			if conn != nil {
+				_ = conn.Close()
+			}
 		}
-		connectionCh <- conn
 	}()
 
 	timeout := p.timeout
@@ -89,10 +98,8 @@ func (p *proxyL4Dialer) DialContext(ctx context.Context, network, address string
 		return nil, ctx.Err()
 	case <-timerCh:
 		return nil, fmt.Errorf("timeout after %v", timeout)
-	case conn := <-connectionCh:
-		return conn, nil
-	case err := <-errCh:
-		return nil, err
+	case res := <-results:
+		return res.conn, res.err
 	}
 }
 
