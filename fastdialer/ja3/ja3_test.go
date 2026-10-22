@@ -10,6 +10,7 @@ import (
 	"encoding/pem"
 	"math/big"
 	"net"
+	"reflect"
 	"sync"
 	"testing"
 	"time"
@@ -508,5 +509,26 @@ func TestParseWithJa3_ConcurrentSafety(t *testing.T) {
 	}
 	for i := 0; i < 10; i++ {
 		<-done
+	}
+}
+
+// Specs must not share extensions, since utls writes to the extensions of the
+// spec it applies to a connection (#609).
+func TestParseWithJa3_SpecsShareNoExtensions(t *testing.T) {
+	const ja3 = "771,4865-49195,0-5-10-11-13-16-18-21-23-28-35-43-44-45-51-13172-65281,29-23-24,0"
+
+	a, err := ParseWithJa3(ja3)
+	require.NoError(t, err)
+	b, err := ParseWithJa3(ja3)
+	require.NoError(t, err)
+
+	require.Len(t, b.Extensions, len(a.Extensions))
+	for i := range a.Extensions {
+		// extensions without fields hold no state, and Go may give them all
+		// the same address
+		if reflect.TypeOf(a.Extensions[i]).Elem().Size() == 0 {
+			continue
+		}
+		assert.NotSame(t, a.Extensions[i], b.Extensions[i], "extension %d (%T) is shared", i, a.Extensions[i])
 	}
 }
