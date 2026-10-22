@@ -258,50 +258,42 @@ func (d *Dialer) Dial(ctx context.Context, network, address string) (conn net.Co
 	})
 }
 
-// DialTLS with encrypted connection
+// DialTLS with encrypted connection, using Options.TLSConfig, or
+// Options.ZTLSConfig when Options.WithZTLS is set.
 //
-// Note that the default configuration is included for compatibility with Go
-// version <1.22, and is not intended to be secure. To use modern TLS with ALPN
-// ("h2", "http/1.1") and TLS 1.2+, set WithModernTLS: true or configure ALPN/TLSConfig.
+// Note that the default configuration, used when those are nil, is included
+// for compatibility with the Go version <1.22, and is not intended to be
+// secure. Set Options.TLSConfig, or use the DialTLSWithConfig or
+// DialTLSWithConfigImpersonate methods instead.
 func (d *Dialer) DialTLS(ctx context.Context, network, address string) (conn net.Conn, err error) {
 	if d.options.WithZTLS {
-		ztlsConfig := DefaultZTLSConfig
-		if d.options.ZTLSConfig != nil {
-			ztlsConfig = d.options.ZTLSConfig
-		}
-		return d.DialZTLSWithConfig(ctx, network, address, ztlsConfig)
+		return d.DialZTLSWithConfig(ctx, network, address, d.defaultZTLSConfig())
 	}
-
-	var tlsConfig *tls.Config
-	if d.options.TLSConfig != nil {
-		tlsConfig = d.options.TLSConfig.Clone()
-	} else if d.options.WithModernTLS {
-		tlsConfig = ModernTLSConfig.Clone()
-	} else {
-		tlsConfig = DefaultTLSConfig.Clone()
-	}
-
-	if len(d.options.ALPN) > 0 {
-		tlsConfig.NextProtos = d.options.ALPN
-	}
-	if d.options.TLSMinVersion != 0 {
-		tlsConfig.MinVersion = d.options.TLSMinVersion
-	}
-
-	return d.DialTLSWithConfig(ctx, network, address, tlsConfig)
+	return d.DialTLSWithConfig(ctx, network, address, d.defaultTLSConfig())
 }
 
-// DialZTLS with encrypted connection using ztls
+// DialZTLS with encrypted connection using ztls and Options.ZTLSConfig
 //
-// Note that this configuration is included for compatibility with the Go
-// version <1.22, and is not intended to be secure. It is recommended to use the
+// Note that the default configuration, used when Options.ZTLSConfig is nil,
+// is included for compatibility with the Go version <1.22, and is not
+// intended to be secure. Set Options.ZTLSConfig, or use the
 // DialZTLSWithConfig method instead.
 func (d *Dialer) DialZTLS(ctx context.Context, network, address string) (conn net.Conn, err error) {
-	ztlsConfig := DefaultZTLSConfig
-	if d.options.ZTLSConfig != nil {
-		ztlsConfig = d.options.ZTLSConfig
+	return d.DialZTLSWithConfig(ctx, network, address, d.defaultZTLSConfig())
+}
+
+func (d *Dialer) defaultTLSConfig() *tls.Config {
+	if d.options.TLSConfig != nil {
+		return d.options.TLSConfig
 	}
-	return d.DialZTLSWithConfig(ctx, network, address, ztlsConfig)
+	return DefaultTLSConfig
+}
+
+func (d *Dialer) defaultZTLSConfig() *ztls.Config {
+	if d.options.ZTLSConfig != nil {
+		return d.options.ZTLSConfig
+	}
+	return DefaultZTLSConfig
 }
 
 // DialTLS with encrypted connection

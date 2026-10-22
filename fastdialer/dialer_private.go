@@ -258,13 +258,6 @@ func (d *Dialer) dialIPS(ctx context.Context, l4 l4dialer, opts *dialOptions) (c
 			tlsconfigCopy.ServerName = opts.hostname
 		}
 
-		if len(d.options.ALPN) > 0 && len(tlsconfigCopy.NextProtos) == 0 {
-			tlsconfigCopy.NextProtos = d.options.ALPN
-		}
-		if d.options.TLSMinVersion != 0 && tlsconfigCopy.MinVersion < d.options.TLSMinVersion {
-			tlsconfigCopy.MinVersion = d.options.TLSMinVersion
-		}
-
 		if opts.impersonateStrategy == impersonate.None {
 			l4Conn, err := l4.DialContext(ctx, opts.network, hostPort)
 			if err != nil {

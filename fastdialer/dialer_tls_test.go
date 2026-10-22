@@ -8,7 +8,6 @@ import (
 	"crypto/rand"
 	"crypto/tls"
 	"crypto/x509"
-	"crypto/x509/pkix"
 	"fmt"
 	"io"
 	"log"
@@ -16,12 +15,10 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
-	"slices"
 	"strings"
 	"testing"
 	"time"
 
-	"github.com/stretchr/testify/require"
 	ztls "github.com/zmap/zcrypto/tls"
 )
 
@@ -94,191 +91,66 @@ func TestDialZTLSWithConfigSendsCertificates(t *testing.T) {
 				Certificates:       []ztls.Certificate{{Certificate: [][]byte{der}, PrivateKey: key}},
 			}
 			conn, err := d.DialZTLSWithConfig(context.Background(), "tcp", addr, cfg)
-		if err != nil {
-			t.Fatalf("dial: %v", err)
-		}
+			if err != nil {
+				t.Fatalf("dial: %v", err)
+			}
+			// TLS 1.3 servers check the client certificate after the client
+			// finishes its handshake, so a missing one shows up as a read error.
 			body, err := httpGet(conn)
-		if err != nil {
-			t.Fatalf("request: %v", err)
-		}
-		if !strings.HasPrefix(body, "certs=1 ") {
-			t.Fatalf("server got %q, want one certificate", body)
-		}
+			if err != nil {
+				t.Fatalf("request: %v", err)
+			}
+			if !strings.HasPrefix(body, "certs=1 ") {
+				t.Fatalf("server got %q, want one certificate", body)
+			}
 		})
 	}
 }
 
-func generateTestCert() (tls.Certificate, error) {
-	priv, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
-	if err != nil {
-		return tls.Certificate{}, err
-	}
-	template := x509.Certificate{
-		SerialNumber: big.NewInt(1),
-		Subject: pkix.Name{
-			Organization: []string{"Fastdialer Test"},
-		},
-		NotBefore:    time.Now().Add(-time.Hour),
-		NotAfter:     time.Now().Add(time.Hour),
-		KeyUsage:     x509.KeyUsageKeyEncipherment | x509.KeyUsageDigitalSignature,
-		ExtKeyUsage:  []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
-		IPAddresses:  []net.IP{net.ParseIP("127.0.0.1")},
-	}
-	certDER, err := x509.CreateCertificate(rand.Reader, &template, &template, &priv.PublicKey, priv)
-	if err != nil {
-		return tls.Certificate{}, err
-	}
-	return tls.Certificate{
-		Certificate: [][]byte{certDER},
-		PrivateKey:  priv,
-	}, nil
-}
+// Options.TLSConfig and Options.ZTLSConfig replace the default configs of
+// DialTLS and DialZTLS, and leave the configs passed to WithConfig dials alone.
+func TestDialTLSUsesOptionsConfig(t *testing.T) {
+	srv := newTLSServer(t, &tls.Config{NextProtos: []string{"from-options", "from-caller"}})
+	addr := srv.Listener.Addr().String()
 
-func startTestTLSServer(t *testing.T, helloCallback func(h *tls.ClientHelloInfo)) net.Listener {
-	cert, err := generateTestCert()
-	require.NoError(t, err)
+	opts := DefaultOptions
+	opts.TLSConfig = &tls.Config{InsecureSkipVerify: true, NextProtos: []string{"from-options"}}
+	opts.ZTLSConfig = &ztls.Config{InsecureSkipVerify: true, NextProtos: []string{"from-options"}}
+	d, err := NewDialer(opts)
+	if err != nil {
+		t.Fatalf("new dialer: %v", err)
+	}
+	t.Cleanup(d.Close)
 
-	tlsConfig := &tls.Config{
-		Certificates: []tls.Certificate{cert},
-		GetConfigForClient: func(h *tls.ClientHelloInfo) (*tls.Config, error) {
-			if helloCallback != nil {
-				helloCallback(h)
-			}
-			return nil, nil
+	ctx := context.Background()
+	dials := map[string]func() (net.Conn, error){
+		"DialTLS":  func() (net.Conn, error) { return d.DialTLS(ctx, "tcp", addr) },
+		"DialZTLS": func() (net.Conn, error) { return d.DialZTLS(ctx, "tcp", addr) },
+		"DialTLSWithConfig": func() (net.Conn, error) {
+			return d.DialTLSWithConfig(ctx, "tcp", addr, &tls.Config{InsecureSkipVerify: true, NextProtos: []string{"from-caller"}})
 		},
 	}
-
-	ln, err := tls.Listen("tcp", "127.0.0.1:0", tlsConfig)
-	require.NoError(t, err)
-
-	go func() {
-		for {
-			conn, err := ln.Accept()
+	want := map[string]string{"DialTLS": "from-options", "DialZTLS": "from-options", "DialTLSWithConfig": "from-caller"}
+	for name, dial := range dials {
+		t.Run(name, func(t *testing.T) {
+			conn, err := dial()
 			if err != nil {
-				return
+				t.Fatalf("dial: %v", err)
 			}
-			go func(c net.Conn) {
-				defer func() {
-					_ = c.Close()
-				}()
-				buf := make([]byte, 1024)
-				_, _ = c.Read(buf)
-				_, _ = c.Write([]byte("HTTP/1.1 200 OK\r\nContent-Length: 0\r\n\r\n"))
-			}(conn)
-		}
-	}()
+			defer func() { _ = conn.Close() }()
 
-	return ln
-}
-
-func TestDialer_WithModernTLS(t *testing.T) {
-	var capturedHello *tls.ClientHelloInfo
-	ln := startTestTLSServer(t, func(h *tls.ClientHelloInfo) {
-		capturedHello = h
-	})
-	defer func() {
-		_ = ln.Close()
-	}()
-
-	opts := DefaultOptions
-	opts.WithModernTLS = true
-	fd, err := NewDialer(opts)
-	require.NoError(t, err)
-	defer fd.Close()
-
-	ctx := context.Background()
-	conn, err := fd.DialTLS(ctx, "tcp", ln.Addr().String())
-	require.NoError(t, err)
-	defer func() {
-		_ = conn.Close()
-	}()
-
-	require.NotNil(t, capturedHello)
-	require.Equal(t, []string{"h2", "http/1.1"}, capturedHello.SupportedProtos)
-	require.False(t, slices.Contains(capturedHello.SupportedVersions, tls.VersionTLS10))
-	require.False(t, slices.Contains(capturedHello.SupportedVersions, tls.VersionTLS11))
-}
-
-func TestDialer_WithCustomALPN(t *testing.T) {
-	var capturedHello *tls.ClientHelloInfo
-	ln := startTestTLSServer(t, func(h *tls.ClientHelloInfo) {
-		capturedHello = h
-	})
-	defer func() {
-		_ = ln.Close()
-	}()
-
-	opts := DefaultOptions
-	opts.ALPN = []string{"custom-proto", "http/1.1"}
-	fd, err := NewDialer(opts)
-	require.NoError(t, err)
-	defer fd.Close()
-
-	ctx := context.Background()
-	conn, err := fd.DialTLS(ctx, "tcp", ln.Addr().String())
-	require.NoError(t, err)
-	defer func() {
-		_ = conn.Close()
-	}()
-
-	require.NotNil(t, capturedHello)
-	require.Equal(t, []string{"custom-proto", "http/1.1"}, capturedHello.SupportedProtos)
-}
-
-func TestDialer_WithTLSMinVersion(t *testing.T) {
-	var capturedHello *tls.ClientHelloInfo
-	ln := startTestTLSServer(t, func(h *tls.ClientHelloInfo) {
-		capturedHello = h
-	})
-	defer func() {
-		_ = ln.Close()
-	}()
-
-	opts := DefaultOptions
-	opts.TLSMinVersion = tls.VersionTLS13
-	fd, err := NewDialer(opts)
-	require.NoError(t, err)
-	defer fd.Close()
-
-	ctx := context.Background()
-	conn, err := fd.DialTLS(ctx, "tcp", ln.Addr().String())
-	require.NoError(t, err)
-	defer func() {
-		_ = conn.Close()
-	}()
-
-	require.NotNil(t, capturedHello)
-	require.Equal(t, []uint16{tls.VersionTLS13}, capturedHello.SupportedVersions)
-}
-
-func TestDialer_WithCustomTLSConfig(t *testing.T) {
-	var capturedHello *tls.ClientHelloInfo
-	ln := startTestTLSServer(t, func(h *tls.ClientHelloInfo) {
-		capturedHello = h
-	})
-	defer func() {
-		_ = ln.Close()
-	}()
-
-	customConfig := &tls.Config{
-		InsecureSkipVerify: true,
-		MinVersion:         tls.VersionTLS12,
-		NextProtos:         []string{"custom-config-alpn"},
+			var got string
+			switch c := conn.(type) {
+			case *tls.Conn:
+				got = c.ConnectionState().NegotiatedProtocol
+			case *ztls.Conn:
+				got = c.ConnectionState().NegotiatedProtocol
+			default:
+				t.Fatalf("unexpected conn type %T", conn)
+			}
+			if got != want[name] {
+				t.Fatalf("negotiated %q, want %q", got, want[name])
+			}
+		})
 	}
-
-	opts := DefaultOptions
-	opts.TLSConfig = customConfig
-	fd, err := NewDialer(opts)
-	require.NoError(t, err)
-	defer fd.Close()
-
-	ctx := context.Background()
-	conn, err := fd.DialTLS(ctx, "tcp", ln.Addr().String())
-	require.NoError(t, err)
-	defer func() {
-		_ = conn.Close()
-	}()
-
-	require.NotNil(t, capturedHello)
-	require.Equal(t, []string{"custom-config-alpn"}, capturedHello.SupportedProtos)
 }

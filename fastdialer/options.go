@@ -2,7 +2,7 @@ package fastdialer
 
 import (
 	"context"
-	"crypto/tls" 
+	"crypto/tls"
 	"log"
 	"net"
 	"time"
@@ -100,17 +100,13 @@ type Options struct {
 	// connection is attempted (resolution, policy) are not reported.
 	OnDialResult func(ctx context.Context, hostname, port string, err error)
 
-	// TLSConfig is an optional custom TLS configuration to use for TLS dialing.
+	// TLSConfig is the config of DialTLS. Default is [DefaultTLSConfig], which
+	// offers legacy versions and ciphers and no ALPN, to reach old servers.
+	// Configs passed to the WithConfig dial methods are used as given.
 	TLSConfig *tls.Config
-	// ZTLSConfig is an optional custom ZTLS configuration.
+	// ZTLSConfig is the config of DialZTLS, and of DialTLS when WithZTLS is
+	// set. Default is [DefaultZTLSConfig].
 	ZTLSConfig *ztls.Config
-	// ALPN is an optional list of application protocols to offer during TLS handshake (e.g. []string{"h2", "http/1.1"}).
-	ALPN []string
-	// TLSMinVersion is an optional minimum TLS version (e.g. tls.VersionTLS12).
-	TLSMinVersion uint16
-	// WithModernTLS configures the default TLS handshake with modern secure defaults:
-	// TLS 1.2 minimum, standard cipher suites, and ALPN ["h2", "http/1.1"].
-	WithModernTLS bool
 }
 
 // DefaultOptions of the cache
