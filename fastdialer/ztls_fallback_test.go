@@ -346,7 +346,7 @@ func TestDialZTLSClosesConnOnHandshakeError(t *testing.T) {
 		close(closed)
 	}()
 
-	// a long timeout, so closeAfterTimeout can't be what closes the conn.
+	// a long timeout, so the handshake deadline can't be what fails the dial.
 	dialer := newFallbackTestDialer(t, func(o *Options) { o.DialerTimeout = time.Minute })
 	conn, err := dialer.DialZTLSWithConfig(context.Background(), "tcp", ln.Addr().String(), DefaultZTLSConfig)
 	if conn != nil {
