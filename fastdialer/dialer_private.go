@@ -10,6 +10,7 @@ import (
 	"log/slog"
 	"net"
 	"os"
+	"reflect"
 	"slices"
 	"strconv"
 	"strings"
@@ -288,38 +289,11 @@ func (d *Dialer) dialIPS(ctx context.Context, l4 l4dialer, opts *dialOptions) (c
 			if err != nil {
 				return nil, d.handleDialError(err, opts)
 			}
-			uTLSConfig := asUTLSConfig(tlsconfigCopy)
-			var uTLSConn *utls.UConn
-			switch opts.impersonateStrategy {
-			case impersonate.Random:
-				uTLSConn = utls.UClient(nativeConn, uTLSConfig, randomClientHelloID())
-			case impersonate.Custom:
-				spec, ownSession := newClientHelloSpec(opts.impersonateIdentity)
-				// utls panics when it loads a cached session into an
-				// extension that already holds one
-				if ownSession {
-					uTLSConfig.ClientSessionCache = nil
-				}
-				uTLSConn = utls.UClient(nativeConn, uTLSConfig, utls.HelloCustom)
-				if err := uTLSConn.ApplyPreset(spec); err != nil {
-					return nil, err
-				}
-			case impersonate.Chrome:
-				uTLSConn = utls.UClient(nativeConn, uTLSConfig, utls.HelloChrome_106_Shuffle)
-			}
-			if len(tlsconfigCopy.NextProtos) > 0 {
-				if err := setALPN(uTLSConn, tlsconfigCopy.NextProtos); err != nil {
-					_ = uTLSConn.Close()
-					return nil, err
-				}
-			}
-			handshakeDoneCancel := closeAfterTimeout(d.GetTimeout(), uTLSConn)
-			if err := uTLSConn.Handshake(); err != nil {
-				handshakeDoneCancel()
-				_ = uTLSConn.Close()
+			uTLSConn, err := d.handshakeImpersonated(nativeConn, tlsconfigCopy, opts)
+			if err != nil {
+				_ = nativeConn.Close()
 				return nil, err
 			}
-			handshakeDoneCancel()
 			conn = uTLSConn
 		}
 	} else if opts.shouldUseZTLS {
@@ -389,6 +363,43 @@ func (d *Dialer) dialZTLS(ctx context.Context, l4 l4dialer, opts *dialOptions, h
 	return ztlsConn, nil
 }
 
+// handshakeImpersonated runs a utls client handshake over conn with config and
+// the ClientHello of opts.impersonateStrategy. When it fails, closing conn is
+// left to the caller that dialed it, though a handshake that times out has
+// closed it already.
+func (d *Dialer) handshakeImpersonated(conn net.Conn, config *tls.Config, opts *dialOptions) (*utls.UConn, error) {
+	uTLSConfig := asUTLSConfig(config)
+	var uTLSConn *utls.UConn
+	switch opts.impersonateStrategy {
+	case impersonate.Random:
+		uTLSConn = utls.UClient(conn, uTLSConfig, randomClientHelloID())
+	case impersonate.Custom:
+		spec, ownSession := newClientHelloSpec(opts.impersonateIdentity)
+		// utls panics when it loads a cached session into an
+		// extension that already holds one
+		if ownSession {
+			uTLSConfig.ClientSessionCache = nil
+		}
+		uTLSConn = utls.UClient(conn, uTLSConfig, utls.HelloCustom)
+		if err := uTLSConn.ApplyPreset(spec); err != nil {
+			return nil, err
+		}
+	case impersonate.Chrome:
+		uTLSConn = utls.UClient(conn, uTLSConfig, utls.HelloChrome_106_Shuffle)
+	}
+	if len(config.NextProtos) > 0 {
+		if err := setALPN(uTLSConn, config.NextProtos); err != nil {
+			return nil, err
+		}
+	}
+	handshakeDoneCancel := closeAfterTimeout(d.GetTimeout(), uTLSConn)
+	defer handshakeDoneCancel()
+	if err := uTLSConn.Handshake(); err != nil {
+		return nil, err
+	}
+	return uTLSConn, nil
+}
+
 // canFallbackToZTLS reports whether a failed crypto/tls handshake (handshakeErr,
 // made with config) may be retried once with ztls and ztls.ChromeCiphers, to
 // reach servers that crypto/tls refuses to talk to (old versions, legacy
@@ -443,11 +454,14 @@ func randomClientHelloID() utls.ClientHelloID {
 // newClientHelloSpec returns the spec of identity for one connection, and
 // whether the identity sets its own session.
 //
-// Specs share extensions across connections, but utls stores the state of a
-// connection in some of them: the server name and key shares it fills in, and
-// the session it resumes. A later connection would keep the server name of an
-// earlier one, reuse key shares without their private keys, and fail or panic
-// on a stored session, so the spec gets its own copies of these extensions.
+// utls stores the state of a connection in the extensions of its spec: the
+// server name, GREASE values and key shares it fills in, the padding it
+// computes, and the session it resumes. Callers share an identity across dials
+// and goroutines, so the spec gets a copy of each extension, and a new
+// extension for the session that utls resumes. Otherwise concurrent dials
+// would race on the identity, and a later dial would keep the server name of
+// an earlier one, reuse key shares without their private keys, and fail or
+// panic on a stored session.
 //
 // The spec keeps a server name or session ticket that the identity sets
 // itself, and session extensions of other types, such as the
@@ -458,31 +472,49 @@ func newClientHelloSpec(identity *impersonate.Identity) (spec *utls.ClientHelloS
 	s.Extensions = slices.Clone(s.Extensions)
 	for i, ext := range s.Extensions {
 		switch ext := ext.(type) {
-		case *utls.SNIExtension:
-			s.Extensions[i] = &utls.SNIExtension{ServerName: ext.ServerName}
-		case *utls.KeyShareExtension:
-			s.Extensions[i] = &utls.KeyShareExtension{KeyShares: slices.Clone(ext.KeyShares)}
 		case *utls.SessionTicketExtension:
-			if ext.Initialized {
-				ownSession = true
-			} else {
+			if !ext.Initialized {
 				s.Extensions[i] = &utls.SessionTicketExtension{}
+				continue
 			}
+			ownSession = true
 		case *utls.UtlsPreSharedKeyExtension:
 			s.Extensions[i] = &utls.UtlsPreSharedKeyExtension{}
+			continue
 		case utls.ISessionTicketExtension, utls.PreSharedKeyExtension:
 			ownSession = true
 		}
+		s.Extensions[i] = copyExtension(ext)
 	}
 	return &s, ownSession
+}
+
+// copyExtension returns a copy of ext that utls can fill in for one connection.
+// utls assigns to the fields of an extension, and in place to the elements of
+// some of its exported slices, such as the GREASE placeholders among the curves
+// and versions, so the copy gets its own struct and exported slices. Any type
+// is copied this way, since utls doesn't document which ones it writes to. An
+// extension that isn't a pointer to a struct is returned as is.
+func copyExtension(ext utls.TLSExtension) utls.TLSExtension {
+	v := reflect.ValueOf(ext)
+	if v.Kind() != reflect.Pointer || v.IsNil() || v.Elem().Kind() != reflect.Struct {
+		return ext
+	}
+	c := reflect.New(v.Elem().Type()).Elem()
+	c.Set(v.Elem())
+	for i := range c.NumField() {
+		if f := c.Field(i); f.Kind() == reflect.Slice && f.CanSet() && !f.IsNil() {
+			f.Set(reflect.AppendSlice(reflect.MakeSlice(f.Type(), 0, f.Len()), f))
+		}
+	}
+	return c.Addr().Interface().(utls.TLSExtension)
 }
 
 // setALPN makes conn advertise protos as its ALPN protocols.
 //
 // Parroted and custom ClientHello specs carry their own ALPN extension, which
-// overrides Config.NextProtos. The extension is replaced rather than modified
-// because specs share extensions across connections. A spec without ALPN
-// stays without it, keeping its extension set.
+// overrides Config.NextProtos, so setALPN replaces that extension. A spec
+// without ALPN stays without it, keeping its extension set.
 func setALPN(conn *utls.UConn, protos []string) error {
 	if err := conn.BuildHandshakeState(); err != nil {
 		return err
