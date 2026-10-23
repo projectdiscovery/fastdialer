@@ -9,6 +9,7 @@ import (
 
 func AsTLSConfig(ztlsConfig *ztls.Config) (*tls.Config, error) {
 	tlsConfig := &tls.Config{
+		Certificates:           asTLSCertificates(ztlsConfig.Certificates),
 		NextProtos:             ztlsConfig.NextProtos,
 		ServerName:             ztlsConfig.ServerName,
 		ClientAuth:             tls.ClientAuthType(ztlsConfig.ClientAuth),
@@ -34,6 +35,26 @@ func AsZTLSConfig(tlsConfig *tls.Config) (*ztls.Config, error) {
 		MaxVersion:             tlsConfig.MaxVersion,
 	}
 	return ztlsConfig, nil
+}
+
+// asTLSCertificates converts certs for crypto/tls. It leaves Leaf unset because
+// zcrypto has its own x509 type, and crypto/tls parses the leaf from the chain
+// when Leaf is nil.
+func asTLSCertificates(zcerts []ztls.Certificate) []tls.Certificate {
+	if zcerts == nil {
+		return nil
+	}
+	certs := make([]tls.Certificate, len(zcerts))
+	for i, zcert := range zcerts {
+		certs[i] = tls.Certificate{
+			Certificate:                  zcert.Certificate,
+			PrivateKey:                   zcert.PrivateKey,
+			SupportedSignatureAlgorithms: convertSlice[tls.SignatureScheme](zcert.SupportedSignatureAlgorithms),
+			OCSPStaple:                   zcert.OCSPStaple,
+			SignedCertificateTimestamps:  zcert.SignedCertificateTimestamps,
+		}
+	}
+	return certs
 }
 
 // asZTLSCertificates converts certs for ztls. It leaves Leaf unset because
