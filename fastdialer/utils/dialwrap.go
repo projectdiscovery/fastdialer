@@ -3,6 +3,7 @@ package utils
 import (
 	"context"
 	"net"
+	"slices"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -443,6 +444,11 @@ func (d *DialWrap) dialParallel(ctx context.Context, primaries, fallbacks []net.
 			}
 		}
 	}
+}
+
+// IPs returns the ips of the target
+func (d *DialWrap) IPs() []net.IP {
+	return slices.Clone(d.ips)
 }
 
 // Address returns ip and port of the target

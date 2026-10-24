@@ -200,6 +200,16 @@ func (d *Dialer) dial(ctx context.Context, opts *dialOptions) (conn net.Conn, er
 	var IPS []string
 	// check if this is present in cache
 	dw, err := d.dialCache.GetIFPresent(opts.connHash())
+	if err == nil && dw != nil {
+		// OnValidateTarget may reject a target it allowed when it was cached
+		for _, ip := range dw.IPs() {
+			if !d.isValidTarget(hostname, ip.String(), port) {
+				// the uncached path filters the ips again and reports the invalid ones
+				dw = nil
+				break
+			}
+		}
+	}
 	if err != nil || dw == nil {
 		// hostname rules are regexes, which networkpolicy only applies to
 		// hostnames, never to the resolved ips
@@ -230,29 +240,13 @@ func (d *Dialer) dial(ctx context.Context, opts *dialOptions) (conn net.Conn, er
 
 		filteredIPs := []string{}
 
-		portInt, _ := strconv.Atoi(port)
-
 		// filter valid/invalid ips
 		for _, ip := range IPS {
-			if !d.networkpolicy.Validate(ip) {
+			if !d.isValidTarget(hostname, ip, port) {
 				if d.options.OnInvalidTarget != nil {
 					d.options.OnInvalidTarget(hostname, ip, port)
 				}
 				continue
-			}
-			if !d.validatePort(portInt) {
-				if d.options.OnInvalidTarget != nil {
-					d.options.OnInvalidTarget(hostname, ip, port)
-				}
-				continue
-			}
-			if d.options.OnValidateTarget != nil {
-				if err := d.options.OnValidateTarget(hostname, ip, port); err != nil {
-					if d.options.OnInvalidTarget != nil {
-						d.options.OnInvalidTarget(hostname, ip, port)
-					}
-					continue
-				}
 			}
 			if d.options.OnBeforeDial != nil {
 				d.options.OnBeforeDial(hostname, ip, port)
@@ -654,6 +648,16 @@ func (d *Dialer) setHandshakeDeadline(ctx context.Context, conn net.Conn) func()
 	}
 	_ = conn.SetDeadline(deadline)
 	return func() { _ = conn.SetDeadline(time.Time{}) }
+}
+
+// isValidTarget reports whether the network policy, the port lists and
+// OnValidateTarget allow dialing ip.
+func (d *Dialer) isValidTarget(hostname, ip, port string) bool {
+	portInt, _ := strconv.Atoi(port)
+	if !d.networkpolicy.Validate(ip) || !d.validatePort(portInt) {
+		return false
+	}
+	return d.options.OnValidateTarget == nil || d.options.OnValidateTarget(hostname, ip, port) == nil
 }
 
 func (d *Dialer) validatePort(port int) bool {
