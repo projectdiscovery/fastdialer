@@ -201,6 +201,15 @@ func (d *Dialer) dial(ctx context.Context, opts *dialOptions) (conn net.Conn, er
 	// check if this is present in cache
 	dw, err := d.dialCache.GetIFPresent(opts.connHash())
 	if err != nil || dw == nil {
+		// hostname rules are regexes, which networkpolicy only applies to
+		// hostnames, never to the resolved ips
+		if hostname != "" && !iputil.IsIP(hostname) && !d.networkpolicy.Validate(hostname) {
+			if d.options.OnInvalidTarget != nil {
+				d.options.OnInvalidTarget(hostname, "", port)
+			}
+			return nil, NoAddressAllowedError
+		}
+
 		// use fixed ip as first
 		if opts.fixedIP != "" {
 			IPS = append(IPS, opts.fixedIP)
