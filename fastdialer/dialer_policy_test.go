@@ -3,6 +3,7 @@ package fastdialer
 import (
 	"context"
 	"net"
+	"strconv"
 	"sync"
 	"testing"
 
@@ -93,4 +94,51 @@ func TestDialHostnamePolicy(t *testing.T) {
 		require.ErrorIs(t, err, NoAddressAllowedError)
 		require.Equal(t, []invalidTarget{{"other.test", "127.0.0.1", port}}, got)
 	})
+}
+
+func TestDialPolicyPortLists(t *testing.T) {
+	resolver, _, shutdown := startMockDNSServer(t, map[string]string{"ok.test": "127.0.0.1"})
+	defer shutdown()
+
+	port := listenBanner(t, "127.0.0.1", "0", "one")
+	portInt, err := strconv.Atoi(port)
+	require.NoError(t, err)
+	address := net.JoinHostPort("ok.test", port)
+
+	withOptions := func(np networkpolicy.Options) func(*Options) {
+		return func(opts *Options) { opts.WithNetworkPolicyOptions = &np }
+	}
+	withPolicy := func(np networkpolicy.Options) func(*Options) {
+		policy, err := networkpolicy.New(np)
+		require.NoError(t, err)
+		return func(opts *Options) { opts.NetworkPolicy = policy }
+	}
+
+	tests := []struct {
+		name      string
+		configure func(*Options)
+		allowed   bool
+	}{
+		{"options deny list blocks the port", withOptions(networkpolicy.Options{DenyPortList: []int{portInt}}), false},
+		{"options allow list blocks other ports", withOptions(networkpolicy.Options{AllowPortList: []int{portInt + 1}}), false},
+		{"options allow list keeps the port", withOptions(networkpolicy.Options{AllowPortList: []int{portInt}}), true},
+		{"policy deny list blocks the port", withPolicy(networkpolicy.Options{DenyPortList: []int{portInt}}), false},
+		{"policy without port lists keeps the port", withPolicy(networkpolicy.Options{DenyList: []string{"10.0.0.0/8"}}), true},
+		{"dialer deny list still applies with a policy", func(opts *Options) {
+			withPolicy(networkpolicy.Options{})(opts)
+			opts.DenyPortList = []int{portInt}
+		}, false},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			fd := newPinTestDialer(t, resolver, test.configure)
+			conn, err := fd.Dial(context.Background(), "tcp", address)
+			if test.allowed {
+				require.NoError(t, err)
+				require.Equal(t, "one", readBanner(t, conn))
+				return
+			}
+			require.ErrorIs(t, err, NoAddressAllowedError)
+		})
+	}
 }

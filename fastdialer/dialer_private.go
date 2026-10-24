@@ -654,7 +654,8 @@ func (d *Dialer) setHandshakeDeadline(ctx context.Context, conn net.Conn) func()
 // OnValidateTarget allow dialing ip.
 func (d *Dialer) isValidTarget(hostname, ip, port string) bool {
 	portInt, _ := strconv.Atoi(port)
-	if !d.networkpolicy.Validate(ip) || !d.validatePort(portInt) {
+	// Options.NetworkPolicy doesn't carry the port lists of Options, so both are checked
+	if !d.networkpolicy.Validate(ip) || !d.networkpolicy.ValidatePort(portInt) || !d.validatePort(portInt) {
 		return false
 	}
 	return d.options.OnValidateTarget == nil || d.options.OnValidateTarget(hostname, ip, port) == nil
