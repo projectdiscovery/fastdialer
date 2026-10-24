@@ -15,6 +15,7 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -152,5 +153,99 @@ func TestDialTLSUsesOptionsConfig(t *testing.T) {
 				t.Fatalf("negotiated %q, want %q", got, want[name])
 			}
 		})
+	}
+}
+
+// DialTLS offers the cipher suites of crypto/tls and http/1.1, and still offers
+// TLS 1.0 for old servers.
+func TestDialTLSDefaultClientHello(t *testing.T) {
+	hellos := make(chan *tls.ClientHelloInfo, 1)
+	srv := newTLSServer(t, &tls.Config{
+		GetConfigForClient: func(chi *tls.ClientHelloInfo) (*tls.Config, error) {
+			hellos <- chi
+			return nil, nil
+		},
+	})
+	d := newFallbackTestDialer(t, nil)
+
+	conn, err := d.DialTLS(context.Background(), "tcp", srv.Listener.Addr().String())
+	if err != nil {
+		t.Fatalf("dial: %v", err)
+	}
+	_ = conn.Close()
+
+	chi := <-hellos
+	if !slices.Equal(chi.SupportedProtos, []string{"http/1.1"}) {
+		t.Fatalf("ALPN %q, want [http/1.1]", chi.SupportedProtos)
+	}
+	for _, suite := range tls.InsecureCipherSuites() {
+		if slices.Contains(chi.CipherSuites, suite.ID) {
+			t.Fatalf("offered insecure cipher suite %s", suite.Name)
+		}
+	}
+	if !slices.Contains(chi.SupportedVersions, tls.VersionTLS10) {
+		t.Fatal("TLS 1.0 not offered")
+	}
+}
+
+// Servers that only accept a legacy cipher suite are reached through the ztls
+// fallback.
+func TestDialTLSDefaultReachesLegacyCipherServer(t *testing.T) {
+	srv := newTLSServer(t, &tls.Config{
+		MinVersion:   tls.VersionTLS10,
+		MaxVersion:   tls.VersionTLS10,
+		CipherSuites: []uint16{tls.TLS_RSA_WITH_3DES_EDE_CBC_SHA},
+	})
+	d := newFallbackTestDialer(t, nil)
+
+	conn, err := d.DialTLS(context.Background(), "tcp", srv.Listener.Addr().String())
+	if err != nil {
+		t.Fatalf("dial: %v", err)
+	}
+	if _, ok := conn.(*ztls.Conn); !ok {
+		t.Fatalf("got %T, want the ztls fallback connection", conn)
+	}
+	if _, err := httpGet(conn); err != nil {
+		t.Fatalf("request: %v", err)
+	}
+}
+
+// A non-HTTP server that rejects the http/1.1 of DefaultTLSConfig is retried
+// without ALPN, while a caller's own protocols are never dropped.
+func TestDialTLSRetriesWithoutRejectedALPN(t *testing.T) {
+	srv := newTLSServer(t, nil)
+	ln, err := tls.Listen("tcp", "127.0.0.1:0", &tls.Config{Certificates: srv.TLS.Certificates, NextProtos: []string{"imap"}})
+	if err != nil {
+		t.Fatalf("listen: %v", err)
+	}
+	t.Cleanup(func() { _ = ln.Close() })
+	go func() {
+		for {
+			conn, err := ln.Accept()
+			if err != nil {
+				return
+			}
+			go func() {
+				_ = conn.(*tls.Conn).Handshake()
+				_ = conn.Close()
+			}()
+		}
+	}()
+	addr := ln.Addr().String()
+	d := newFallbackTestDialer(t, nil)
+
+	conn, err := d.DialTLS(context.Background(), "tcp", addr)
+	if err != nil {
+		t.Fatalf("dial: %v", err)
+	}
+	if proto := conn.(*tls.Conn).ConnectionState().NegotiatedProtocol; proto != "" {
+		t.Fatalf("negotiated %q, want no ALPN", proto)
+	}
+	_ = conn.Close()
+
+	config := &tls.Config{InsecureSkipVerify: true, NextProtos: []string{"http/1.1"}}
+	if conn, err := d.DialTLSWithConfig(context.Background(), "tcp", addr, config); err == nil {
+		_ = conn.Close()
+		t.Fatal("expected the caller's rejected ALPN to fail the dial")
 	}
 }

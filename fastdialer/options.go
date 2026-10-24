@@ -100,8 +100,7 @@ type Options struct {
 	// connection is attempted (resolution, policy) are not reported.
 	OnDialResult func(ctx context.Context, hostname, port string, err error)
 
-	// TLSConfig is the config of DialTLS. Default is [DefaultTLSConfig], which
-	// offers legacy versions and ciphers and no ALPN, to reach old servers.
+	// TLSConfig is the config of DialTLS. Default is [DefaultTLSConfig].
 	// Configs passed to the WithConfig dial methods are used as given.
 	TLSConfig *tls.Config
 	// ZTLSConfig is the config of DialZTLS, and of DialTLS when WithZTLS is

@@ -261,9 +261,9 @@ func (d *Dialer) Dial(ctx context.Context, network, address string) (conn net.Co
 // DialTLS with encrypted connection, using Options.TLSConfig, or
 // Options.ZTLSConfig when Options.WithZTLS is set.
 //
-// Note that the default configuration, used when those are nil, is included
-// for compatibility with the Go version <1.22, and is not intended to be
-// secure. Set Options.TLSConfig, or use the DialTLSWithConfig or
+// Note that the default configuration, used when those are nil, skips
+// certificate verification and is not intended to be secure. Set
+// Options.TLSConfig, or use the DialTLSWithConfig or
 // DialTLSWithConfigImpersonate methods instead.
 func (d *Dialer) DialTLS(ctx context.Context, network, address string) (conn net.Conn, err error) {
 	if d.options.WithZTLS {
