@@ -355,6 +355,14 @@ func (d *Dialer) dialIPS(ctx context.Context, l4 l4dialer, opts *dialOptions) (c
 			clearDeadline := d.setHandshakeDeadline(ctx, l4Conn)
 			if err := TlsConn.HandshakeContext(ctx); err != nil {
 				_ = TlsConn.Close()
+				// some non-HTTP services reject the http/1.1 of DefaultTLSConfig,
+				// while a caller's own protocols are theirs to keep
+				if opts.tlsconfig == DefaultTLSConfig && rejectedALPN(err) {
+					retry := *opts
+					retry.tlsconfig = DefaultTLSConfig.Clone()
+					retry.tlsconfig.NextProtos = nil
+					return d.dialIPS(ctx, l4, &retry)
+				}
 				if d.canFallbackToZTLS(ctx, tlsconfigCopy, err) {
 					ztlsconfigCopy, convErr := AsZTLSConfig(tlsconfigCopy)
 					if convErr != nil {
@@ -479,6 +487,15 @@ func (d *Dialer) canFallbackToZTLS(ctx context.Context, config *tls.Config, hand
 		return false
 	}
 	return carriesOverToZTLS(config)
+}
+
+// rejectedALPN reports whether the server ended the handshake with a
+// no_application_protocol alert. crypto/tls doesn't export the type of
+// received alerts, so the alert is matched by its text.
+func rejectedALPN(err error) bool {
+	var opErr *net.OpError
+	return errkit.As(err, &opErr) && opErr.Op == "remote error" && opErr.Err != nil &&
+		opErr.Err.Error() == "tls: no application protocol"
 }
 
 // carriesOverToZTLS reports whether a ztls retry with AsZTLSConfig(config)
