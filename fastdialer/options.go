@@ -43,7 +43,9 @@ type Options struct {
 	EnableFallback           bool
 	Allow                    []string
 	Deny                     []string
+	// Deprecated: has no effect, the dialer validates hosts and IPs, not URLs.
 	AllowSchemeList          []string
+	// Deprecated: has no effect, the dialer validates hosts and IPs, not URLs.
 	DenySchemeList           []string
 	AllowPortList            []int
 	DenyPortList             []int
