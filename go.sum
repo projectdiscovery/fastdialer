@@ -65,8 +65,8 @@ github.com/projectdiscovery/goleak v0.0.0-20240729222606-a7d18edc33f8 h1:M86+KhV
 github.com/projectdiscovery/goleak v0.0.0-20240729222606-a7d18edc33f8/go.mod h1:ZkbDKjIe4ojX5CyEk8dYe8odTs8bnPB5s0nzIm4bnMY=
 github.com/projectdiscovery/hmap v0.0.102 h1:ybPuf7UQvuOLiHLOUbVMvd+PSlItQU5iQpP1Erl8kaU=
 github.com/projectdiscovery/hmap v0.0.102/go.mod h1:IZ92wXFmxYpdn0euZ7VFmypzOBNDwq8c3yRyIIol6XE=
-github.com/projectdiscovery/networkpolicy v0.1.56 h1:M/L421HFuN707oX0tLTzKZY46uRyaKwxAeyi0q8PlxI=
-github.com/projectdiscovery/networkpolicy v0.1.56/go.mod h1:N5bXm8L3UsDw51CeA1nhTsGEbQMbgL5lXTiIU013xd0=
+github.com/projectdiscovery/networkpolicy v0.1.57 h1:3P7esW8KE3yoZSE/GvswbSZ1bh8Gk+dURtvNlFzOid0=
+github.com/projectdiscovery/networkpolicy v0.1.57/go.mod h1:Ky0GOIqAL666JBHyHeIsQ5rjkET902I6XjGEpvCVx9s=
 github.com/projectdiscovery/retryabledns v1.0.116 h1:tK28PJ4tLO7bgM89RpIFjkfTPMSbRegwvg9mN/q6z78=
 github.com/projectdiscovery/retryabledns v1.0.116/go.mod h1:r3vH0AKYtJ9fculcqRFrdVYe2ABcHwZeR4C6j3rqCbY=
 github.com/projectdiscovery/utils v0.11.10 h1:6mtjWZifPT+UFXCeWSSzwb10KadrlkhYTm03jfhJ2EY=
