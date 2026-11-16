@@ -89,6 +89,8 @@ func TestHandleResolverLine(t *testing.T) {
 		{name: "address with comment", line: "nameserver 1.1.1.1 # note", want: "1.1.1.1"},
 		{name: "no address", line: "nameserver", want: ""},
 		{name: "no address with comment", line: "nameserver # note", want: ""},
+		{name: "not an address", line: "nameserver dns.example.com", want: ""},
+		{name: "IPv6 address with zone", line: "nameserver fe80::1%eth0", want: "fe80::1%eth0"},
 	}
 
 	for _, tt := range tests {
