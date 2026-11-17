@@ -3,6 +3,7 @@ package fastdialer
 import (
 	"fmt"
 	"net"
+	"net/netip"
 	"os"
 	"path/filepath"
 	"sync"
@@ -89,6 +90,8 @@ func TestHandleResolverLine(t *testing.T) {
 		{name: "address with comment", line: "nameserver 1.1.1.1 # note", want: "1.1.1.1"},
 		{name: "no address", line: "nameserver", want: ""},
 		{name: "no address with comment", line: "nameserver # note", want: ""},
+		{name: "not an address", line: "nameserver dns.example.com", want: ""},
+		{name: "IPv6 address with zone", line: "nameserver fe80::1%eth0", want: "fe80::1%eth0"},
 	}
 
 	for _, tt := range tests {
@@ -97,6 +100,22 @@ func TestHandleResolverLine(t *testing.T) {
 			require.Equal(t, tt.want, HandleResolverLine(tt.line))
 		})
 	}
+}
+
+func FuzzHandleResolverLine(f *testing.F) {
+	f.Add("nameserver 1.1.1.1 # note")
+
+	f.Fuzz(func(t *testing.T, line string) {
+		got := HandleResolverLine(line)
+		if got == "" {
+			return
+		}
+
+		_, err := netip.ParseAddr(got)
+		if err != nil {
+			t.Errorf("HandleResolverLine(%q) = %q, want an IP address or \"\"", line, got)
+		}
+	})
 }
 
 type mockDNS struct {

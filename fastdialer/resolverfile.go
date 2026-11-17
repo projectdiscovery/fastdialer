@@ -3,6 +3,7 @@ package fastdialer
 import (
 	"bufio"
 	"net"
+	"net/netip"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -144,12 +145,12 @@ func HandleResolverLine(raw string) (ip string) {
 		return
 	}
 
-	ip = fields[1]
-	if net.ParseIP(ip) == nil {
+	_, err := netip.ParseAddr(fields[1])
+	if err != nil {
 		return
 	}
 
-	return ip
+	return fields[1]
 }
 
 func dedupeStrings(values []string) []string {
