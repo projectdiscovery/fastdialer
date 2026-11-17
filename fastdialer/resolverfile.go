@@ -135,7 +135,7 @@ func HandleResolverLine(raw string) (ip string) {
 	}
 
 	fields := strings.Fields(raw)
-	if len(fields) == 0 {
+	if len(fields) <= 1 {
 		return
 	}
 

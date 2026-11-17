@@ -60,6 +60,45 @@ domain example.org
 	require.Equal(t, 1, config.Ndots)
 }
 
+func TestLoadResolverFile_SkipsNameserverWithoutAddress(t *testing.T) {
+	resolvPath := writeResolverFile(t, `
+nameserver # note
+nameserver 127.0.0.1
+nameserver
+`)
+
+	t.Setenv("RESOLVERS_PATH", resolvPath)
+
+	opts := DefaultOptions
+	opts.MaxResolverEntries = 10
+	config, err := loadResolverFile(opts)
+	require.NoError(t, err)
+
+	require.Equal(t, []string{"127.0.0.1:53"}, config.Resolvers)
+}
+
+func TestHandleResolverLine(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		line string
+		want string
+	}{
+		{name: "address", line: "nameserver 1.1.1.1", want: "1.1.1.1"},
+		{name: "address with comment", line: "nameserver 1.1.1.1 # note", want: "1.1.1.1"},
+		{name: "no address", line: "nameserver", want: ""},
+		{name: "no address with comment", line: "nameserver # note", want: ""},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			require.Equal(t, tt.want, HandleResolverLine(tt.line))
+		})
+	}
+}
+
 type mockDNS struct {
 	answers map[string]string
 	queries []string
