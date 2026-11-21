@@ -183,10 +183,11 @@ func closeDialResults(results <-chan *dialResult) {
 }
 
 func (d *DialWrap) doFirstConnection(ctx context.Context) chan *dialResult {
-	if d.busyFirstConnection.Load() {
+	// Claim the first dial in one atomic step; a separate Load and Store would
+	// let two callers both see false and each start a first dial (#666).
+	if !d.busyFirstConnection.CompareAndSwap(false, true) {
 		return nil
 	}
-	d.busyFirstConnection.Store(true)
 	now := time.Now()
 
 	size := len(d.ipv4) + len(d.ipv6)
