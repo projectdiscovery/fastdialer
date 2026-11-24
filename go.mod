@@ -11,7 +11,7 @@ require (
 	github.com/projectdiscovery/hmap v0.0.105
 	github.com/projectdiscovery/networkpolicy v0.1.59
 	github.com/projectdiscovery/retryabledns v1.0.119
-	github.com/projectdiscovery/utils v0.11.14
+	github.com/projectdiscovery/utils v0.11.15
 	github.com/refraction-networking/utls v1.8.2
 	github.com/stretchr/testify v1.12.1
 	github.com/zmap/zcrypto v0.0.0-20261015050653-aa1de3126e87
@@ -34,7 +34,7 @@ require (
 	github.com/microcosm-cc/bluemonday v1.0.27 // indirect
 	github.com/onsi/gomega v1.27.6 // indirect
 	github.com/pkg/errors v0.9.1 // indirect
-	github.com/projectdiscovery/blackrock v0.0.2 // indirect
+	github.com/projectdiscovery/blackrock v0.0.4 // indirect
 	github.com/saintfish/chardet v0.0.0-20230101081208-5e3ef4b5456d // indirect
 	github.com/syndtr/goleveldb v1.0.0 // indirect
 	github.com/tidwall/btree v1.4.3 // indirect
